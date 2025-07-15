@@ -1,0 +1,75 @@
+# Remember Me MCP Server Configuration
+# This is an example configuration file showing all available options with their default values.
+# Copy this file to config.yaml and update with your settings.
+
+# Database configuration
+database:
+  # PostgreSQL host (default: localhost)
+  host: localhost
+  
+  # PostgreSQL port (default: 5432)
+  port: 5432
+  
+  # Database user (default: postgres)
+  user: postgres
+  
+  # Database password (default: empty)
+  # IMPORTANT: Set this in production environments
+  password: ""
+  
+  # Database name (default: remember_me)
+  dbname: remember_me
+  
+  # SSL mode for database connection (default: disable)
+  # Options: disable, require, verify-ca, verify-full
+  sslmode: disable
+  
+  # Maximum number of open connections to the database (default: 25)
+  max_connections: 25
+  
+  # Maximum number of idle connections in the pool (default: 10)
+  max_idle_conns: 10
+  
+  # Maximum lifetime of a connection (default: 5m)
+  # Format: 1h30m, 5m, 30s, etc.
+  conn_max_lifetime: 5m
+  
+  # Maximum idle time before a connection is closed (default: 1m)
+  conn_max_idle_time: 1m
+
+# OpenAI API configuration
+openai:
+  # OpenAI API key (required)
+  # Get your API key from: https://platform.openai.com/api-keys
+  # IMPORTANT: Keep this secret and never commit to version control
+  api_key: "sk-proj-your-api-key-here"
+  
+  # Embedding model to use (default: text-embedding-3-small)
+  # Options: text-embedding-3-small, text-embedding-3-large, text-embedding-ada-002
+  model: "text-embedding-3-small"
+  
+  # Maximum number of retry attempts for API calls (default: 3)
+  max_retries: 3
+  
+  # Timeout for API requests (default: 30s)
+  timeout: 30s
+
+# Memory storage configuration
+memory:
+  # Maximum number of memories to store (default: 1000)
+  # Older memories are automatically pruned when this limit is reached
+  max_memories: 1000
+  
+  # Similarity threshold for semantic search (default: 0.7)
+  # Range: 0.0 to 1.0 (higher = more similar)
+  # Memories with similarity below this threshold won't be returned
+  similarity_threshold: 0.7
+
+# Server configuration
+server:
+  # Log level (default: info)
+  # Options: debug, info, warn, error, fatal
+  log_level: info
+  
+  # Enable debug mode for verbose logging (default: false)
+  debug: false

@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(tree:*)",
+      "Bash(rm:*)",
+      "Bash(./fix_tests.sh)",
+      "Bash(timeout:*)"
+    ],
+    "deny": []
+  }
+}

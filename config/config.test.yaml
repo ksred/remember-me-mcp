@@ -1,0 +1,61 @@
+# Test Configuration for Unit Tests
+# This configuration is optimized for running tests
+
+# Database configuration for testing
+database:
+  # Use localhost for test database
+  host: localhost
+  
+  # Default PostgreSQL port
+  port: 5432
+  
+  # Test user
+  user: postgres
+  
+  # Empty password for local testing
+  password: ""
+  
+  # Separate test database to avoid affecting production data
+  dbname: remember_me_test
+  
+  # Disable SSL for local testing
+  sslmode: disable
+  
+  # Reduced connection pool for testing
+  max_connections: 10
+  max_idle_conns: 5
+  
+  # Shorter timeouts for faster test execution
+  conn_max_lifetime: 1m
+  conn_max_idle_time: 30s
+
+# OpenAI API configuration for testing
+openai:
+  # Use a test API key or mock service
+  # For unit tests, the mock embedding service will be used instead
+  api_key: "test-api-key"
+  
+  # Use the smallest model for faster tests
+  model: "text-embedding-3-small"
+  
+  # Fewer retries for faster test failures
+  max_retries: 1
+  
+  # Shorter timeout for tests
+  timeout: 5s
+
+# Memory configuration for testing
+memory:
+  # Smaller memory limit for tests
+  max_memories: 100
+  
+  # Standard similarity threshold
+  similarity_threshold: 0.7
+
+# Server configuration for testing
+server:
+  # Debug level for detailed test output
+  log_level: debug
+  
+  # Enable debug mode for tests
+  debug: true
