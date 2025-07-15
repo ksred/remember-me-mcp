@@ -4,7 +4,9 @@
       "Bash(tree:*)",
       "Bash(rm:*)",
       "Bash(./fix_tests.sh)",
-      "Bash(timeout:*)"
+      "Bash(timeout:*)",
+      "WebFetch(domain:github.com)",
+      "Bash(PGPASSWORD=devpassword psql:*)"
     ],
     "deny": []
   }

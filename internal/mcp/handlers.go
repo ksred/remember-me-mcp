@@ -222,13 +222,17 @@ func (h *Handler) handleSearchMemories(ctx context.Context, params json.RawMessa
 		req.Limit = 100
 	}
 
+	// Default to semantic search when we have a query (this is why we have embeddings!)
+	// This is the entire point of having vector search
+	useSemanticSearch := req.Query != ""
+
 	// Call memory service
 	memories, err := h.memoryService.Search(ctx, services.SearchRequest{
 		Query:             req.Query,
 		Category:          req.Category,
 		Type:              req.Type,
 		Limit:             req.Limit,
-		UseSemanticSearch: req.UseSemanticSearch,
+		UseSemanticSearch: useSemanticSearch,
 	})
 
 	if err != nil {
@@ -267,7 +271,7 @@ func (h *Handler) handleSearchMemories(ctx context.Context, params json.RawMessa
 		Str("query", req.Query).
 		Str("category", req.Category).
 		Str("type", req.Type).
-		Bool("semantic", req.UseSemanticSearch).
+		Bool("semantic", useSemanticSearch).
 		Msg("successfully searched memories")
 
 	return SearchMemoriesResponse{
