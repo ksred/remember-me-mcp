@@ -1,0 +1,9 @@
+# Production-specific variables
+domain_name: api.remembermcp.com
+enable_debug: false
+log_level: info
+
+# Resource limits
+postgres_max_connections: 200
+postgres_shared_buffers: 256MB
+postgres_effective_cache_size: 1GB

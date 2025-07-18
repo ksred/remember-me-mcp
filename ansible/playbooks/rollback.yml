@@ -1,0 +1,52 @@
+---
+- name: Rollback Remember Me MCP Service
+  hosts: web_servers
+  become: yes
+  gather_facts: no
+  
+  vars_prompt:
+    - name: backup_id
+      prompt: "Enter the backup ID (timestamp) to rollback to"
+      private: no
+  
+  tasks:
+    - name: Check if backup exists
+      stat:
+        path: "{{ remember_me_home }}/bin/remember-me-http.{{ backup_id }}"
+      register: backup_file
+
+    - name: Fail if backup doesn't exist
+      fail:
+        msg: "Backup with ID {{ backup_id }} not found"
+      when: not backup_file.stat.exists
+
+    - name: Stop service
+      systemd:
+        name: remember-me
+        state: stopped
+
+    - name: Rollback to backup
+      copy:
+        src: "{{ remember_me_home }}/bin/remember-me-http.{{ backup_id }}"
+        dest: "{{ remember_me_home }}/bin/remember-me-http"
+        remote_src: yes
+        owner: "{{ remember_me_user }}"
+        group: "{{ remember_me_group }}"
+        mode: '0755'
+
+    - name: Start service
+      systemd:
+        name: remember-me
+        state: started
+
+    - name: Verify rollback
+      uri:
+        url: "http://localhost:{{ remember_me_port }}/health"
+        method: GET
+        status_code: 200
+      retries: 5
+      delay: 3
+
+    - name: Display rollback status
+      debug:
+        msg: "Successfully rolled back to version {{ backup_id }}"

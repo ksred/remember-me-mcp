@@ -67,3 +67,22 @@ coverage.html
 remember-me-mcp
 
 node_modules/
+
+# Ansible vault files
+ansible/group_vars/*/vault.yml
+ansible/host_vars/*/vault.yml
+*.vault.yml
+ansible-vault-password
+
+# Ansible temporary files
+*.retry
+ansible/playbooks/*.retry
+ansible/inventory/*_backup
+ansible/.ansible/
+
+# Ansible dynamic inventory cache
+ansible/inventory/.cache/
+
+# Extension build artifacts
+extension/*.dxt
+extension/remember-me.dxt

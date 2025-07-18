@@ -1,0 +1,123 @@
+---
+- name: Install build dependencies
+  apt:
+    name:
+      - git
+      - build-essential
+      - wget
+    state: present
+    update_cache: yes
+
+- name: Download and install Go
+  block:
+    - name: Download Go binary
+      get_url:
+        url: "https://go.dev/dl/go1.21.5.linux-amd64.tar.gz"
+        dest: "/tmp/go1.21.5.linux-amd64.tar.gz"
+        mode: '0644'
+    
+    - name: Extract Go binary
+      unarchive:
+        src: "/tmp/go1.21.5.linux-amd64.tar.gz"
+        dest: "/usr/local"
+        remote_src: yes
+        creates: "/usr/local/go/bin/go"
+    
+    - name: Add Go to PATH
+      lineinfile:
+        path: /etc/profile.d/go.sh
+        line: 'export PATH=$PATH:/usr/local/go/bin'
+        create: yes
+        mode: '0644'
+
+- name: Create remember-me user
+  user:
+    name: "{{ remember_me_user }}"
+    group: "{{ remember_me_group }}"
+    home: "{{ remember_me_home }}"
+    shell: /bin/bash
+    system: yes
+    create_home: yes
+
+- name: Create application directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ remember_me_user }}"
+    group: "{{ remember_me_group }}"
+    mode: '0755'
+  loop:
+    - "{{ remember_me_home }}"
+    - "{{ remember_me_home }}/bin"
+    - "{{ remember_me_home }}/logs"
+    - "{{ remember_me_home }}/config"
+    - "/var/log/remember-me"
+
+- name: Clone or update repository
+  git:
+    repo: "https://github.com/ksred/remember-me-mcp.git"
+    dest: "{{ remember_me_home }}/src"
+    version: "{{ git_branch | default('main') }}"
+    force: yes
+  become_user: "{{ remember_me_user }}"
+
+- name: Build the application
+  shell: |
+    export PATH=$PATH:/usr/local/go/bin
+    cd {{ remember_me_home }}/src
+    go mod download
+    go build -o {{ remember_me_home }}/bin/remember-me-http cmd/http-server/main.go
+  environment:
+    GOOS: linux
+    GOARCH: amd64
+    CGO_ENABLED: 1
+  become_user: "{{ remember_me_user }}"
+
+- name: Create environment file
+  template:
+    src: env.j2
+    dest: "{{ remember_me_home }}/.env"
+    owner: "{{ remember_me_user }}"
+    group: "{{ remember_me_group }}"
+    mode: '0600'
+
+- name: Create systemd service file
+  template:
+    src: remember-me.service.j2
+    dest: /etc/systemd/system/remember-me.service
+    owner: root
+    group: root
+    mode: '0644'
+  notify:
+    - reload systemd
+    - restart remember-me
+
+- name: Create logrotate configuration
+  template:
+    src: logrotate.j2
+    dest: /etc/logrotate.d/remember-me
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Enable and start Remember Me service
+  systemd:
+    name: remember-me
+    state: started
+    enabled: yes
+    daemon_reload: yes
+
+- name: Wait for service to be ready
+  wait_for:
+    port: "{{ remember_me_port }}"
+    host: localhost
+    delay: 5
+    timeout: 30
+
+- name: Check service health
+  uri:
+    url: "http://localhost:{{ remember_me_port }}/health"
+    method: GET
+    status_code: 200
+  retries: 5
+  delay: 2
