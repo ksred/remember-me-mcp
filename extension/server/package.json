@@ -1,0 +1,14 @@
+{
+  "name": "remember-me-mcp-extension",
+  "version": "1.0.0",
+  "description": "Remember Me MCP Extension Server",
+  "type": "module",
+  "main": "mcp-http-client.js",
+  "scripts": {
+    "start": "node mcp-http-client.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^0.5.0",
+    "axios": "^1.6.0"
+  }
+}
