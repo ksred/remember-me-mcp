@@ -33,6 +33,12 @@ run-http:
 swagger:
 	swag init -g cmd/http-server/main.go -o docs
 
+# Build the Claude Desktop extension
+extension:
+	@echo "Building Claude Desktop extension..."
+	@cd extension && ./build.sh
+	@echo "Extension built: extension/remember-me.dxt"
+
 # Run tests
 test:
 	go test ./...
