@@ -110,6 +110,40 @@ EOF
 }
 EOF
             ;;
+        "http")
+            # HTTP API configuration
+            print_status "Setting up HTTP API configuration..."
+            
+            # Prompt for API URL
+            read -p "Enter the API URL (default: http://localhost:8082): " api_url
+            api_url=${api_url:-"http://localhost:8082"}
+            
+            # Prompt for API key
+            read -p "Enter your API key: " api_key
+            
+            if [ -z "$api_key" ]; then
+                print_error "API key is required for HTTP mode"
+                exit 1
+            fi
+            
+            # Create proxy script path
+            PROXY_SCRIPT="$(cd "$(dirname "$0")" && pwd)/mcp-http-proxy.js"
+            
+            cat > "$CLAUDE_CONFIG_FILE" << EOF
+{
+  "mcpServers": {
+    "remember-me": {
+      "command": "node",
+      "args": ["$PROXY_SCRIPT"],
+      "env": {
+        "REMEMBER_ME_API_URL": "$api_url/api/v1/mcp",
+        "REMEMBER_ME_API_KEY": "$api_key"
+      }
+    }
+  }
+}
+EOF
+            ;;
     esac
 }
 
@@ -217,15 +251,19 @@ main() {
         "docker")
             config_type="docker"
             ;;
+        "http")
+            config_type="http"
+            ;;
         "test")
             test_claude_config
             exit $?
             ;;
         "help"|"--help")
-            echo "Usage: $0 [development|production|docker|test]"
+            echo "Usage: $0 [development|production|docker|http|test]"
             echo "  development: Configure for local development (default)"
             echo "  production:  Configure for production installation"
             echo "  docker:      Configure for Docker deployment"
+            echo "  http:        Configure for HTTP API server"
             echo "  test:        Test current configuration"
             exit 0
             ;;

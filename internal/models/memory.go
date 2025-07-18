@@ -13,16 +13,20 @@ import (
 // Memory represents a stored memory item in the database
 type Memory struct {
 	ID        uint              `gorm:"primaryKey" json:"id"`
+	UserID    uint              `gorm:"not null;index;default:1" json:"user_id"`
 	Type      string            `gorm:"index;not null" json:"type"`
 	Category  string            `gorm:"index;not null" json:"category"`
 	Content   string            `gorm:"type:text;not null" json:"content"`
 	Priority  string            `gorm:"index;default:'medium'" json:"priority"`
 	UpdateKey string            `gorm:"index" json:"update_key,omitempty"`
-	Embedding pgvector.Vector   `gorm:"type:vector(1536);default:null" json:"embedding,omitempty"`
-	Tags      pq.StringArray    `gorm:"type:text[]" json:"tags"`
-	Metadata  json.RawMessage   `gorm:"type:jsonb" json:"metadata,omitempty"`
+	Embedding pgvector.Vector   `gorm:"type:vector(1536);default:null" json:"-" swaggerignore:"true"`
+	Tags      pq.StringArray    `gorm:"type:text[]" json:"tags" swaggertype:"array,string"`
+	Metadata  json.RawMessage   `gorm:"type:jsonb" json:"metadata,omitempty" swaggertype:"object"`
 	CreatedAt time.Time         `json:"created_at"`
 	UpdatedAt time.Time         `json:"updated_at"`
+	
+	// Associations
+	User      *User             `gorm:"foreignKey:UserID" json:"-" swaggerignore:"true"`
 }
 
 // Valid memory types

@@ -6,15 +6,32 @@ all: build
 # Build the binary
 build:
 	go build -o remember-me-mcp cmd/main.go
+	go build -o remember-me-http cmd/http-server/main.go
 
-# Run the application
-run:
+# Run the MCP application
+run-mcp:
 	@if [ -f .env.dev ]; then \
 		echo "Loading .env.dev for development..."; \
 		export $$(cat .env.dev | grep -v '^#' | xargs) && go run cmd/main.go; \
 	else \
 		go run cmd/main.go; \
 	fi
+
+# Run the HTTP server
+run-http:
+	@if [ -f .env.http ]; then \
+		echo "Loading .env.http for HTTP server..."; \
+		export $$(cat .env.http | grep -v '^#' | xargs) && go run cmd/http-server/main.go; \
+	elif [ -f .env.dev ]; then \
+		echo "Loading .env.dev for development..."; \
+		export $$(cat .env.dev | grep -v '^#' | xargs) && go run cmd/http-server/main.go; \
+	else \
+		go run cmd/http-server/main.go; \
+	fi
+
+# Generate Swagger documentation
+swagger:
+	swag init -g cmd/http-server/main.go -o docs
 
 # Run tests
 test:

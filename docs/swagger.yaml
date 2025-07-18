@@ -1,0 +1,535 @@
+basePath: /api/v1
+definitions:
+  api.APIKeyResponse:
+    properties:
+      created_at:
+        type: string
+      expires_at:
+        type: string
+      id:
+        type: integer
+      is_active:
+        type: boolean
+      key:
+        type: string
+      name:
+        type: string
+      permissions:
+        items:
+          type: string
+        type: array
+    type: object
+  api.CreateAPIKeyRequest:
+    properties:
+      expires_at:
+        example: "2024-12-31T23:59:59Z"
+        type: string
+      name:
+        example: Production API Key
+        type: string
+    required:
+    - name
+    type: object
+  api.ErrorResponse:
+    properties:
+      error:
+        example: Invalid request
+        type: string
+    type: object
+  api.LoginRequest:
+    properties:
+      email:
+        example: user@example.com
+        type: string
+      password:
+        example: password123
+        type: string
+    required:
+    - email
+    - password
+    type: object
+  api.LoginResponse:
+    properties:
+      expires_at:
+        type: string
+      token:
+        type: string
+      user:
+        $ref: '#/definitions/api.UserInfo'
+    type: object
+  api.RegisterRequest:
+    properties:
+      email:
+        example: user@example.com
+        type: string
+      password:
+        example: password123
+        minLength: 8
+        type: string
+    required:
+    - email
+    - password
+    type: object
+  api.UserInfo:
+    properties:
+      email:
+        type: string
+      id:
+        type: integer
+    type: object
+  mcp.DeleteMemoryResponse:
+    properties:
+      error:
+        type: string
+      message:
+        type: string
+      success:
+        type: boolean
+    type: object
+  mcp.SearchMemoriesResponse:
+    properties:
+      count:
+        type: integer
+      error:
+        type: string
+      memories:
+        items:
+          $ref: '#/definitions/models.Memory'
+        type: array
+    type: object
+  mcp.StoreMemoryRequest:
+    properties:
+      category:
+        type: string
+      content:
+        type: string
+      metadata:
+        additionalProperties: true
+        type: object
+      type:
+        type: string
+    type: object
+  mcp.StoreMemoryResponse:
+    properties:
+      error:
+        type: string
+      memory:
+        $ref: '#/definitions/models.Memory'
+      success:
+        type: boolean
+    type: object
+  models.Memory:
+    properties:
+      category:
+        type: string
+      content:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: integer
+      metadata:
+        type: object
+      priority:
+        type: string
+      tags:
+        items:
+          type: string
+        type: array
+      type:
+        type: string
+      update_key:
+        type: string
+      updated_at:
+        type: string
+    type: object
+host: localhost:8082
+info:
+  contact:
+    email: support@example.com
+    name: API Support
+  description: API for Remember Me MCP Server - A persistent memory system for Claude
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+  title: Remember Me MCP API
+  version: "1.0"
+paths:
+  /auth/login:
+    post:
+      consumes:
+      - application/json
+      description: Authenticate user and get JWT token
+      parameters:
+      - description: Login credentials
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/api.LoginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.LoginResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Login user
+      tags:
+      - auth
+  /auth/register:
+    post:
+      consumes:
+      - application/json
+      description: Create a new user account
+      parameters:
+      - description: Registration details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/api.RegisterRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/api.UserInfo'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Register a new user
+      tags:
+      - auth
+  /health:
+    get:
+      consumes:
+      - application/json
+      description: Check if the service is healthy
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "503":
+          description: Service Unavailable
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Health check
+      tags:
+      - health
+  /keys:
+    get:
+      consumes:
+      - application/json
+      description: Get all API keys for the authenticated user
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/api.APIKeyResponse'
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: List API keys
+      tags:
+      - keys
+    post:
+      consumes:
+      - application/json
+      description: Create a new API key for authentication
+      parameters:
+      - description: API key details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/api.CreateAPIKeyRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/api.APIKeyResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Create API key
+      tags:
+      - keys
+  /keys/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Delete an API key
+      parameters:
+      - description: API Key ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Delete API key
+      tags:
+      - keys
+  /memories:
+    get:
+      consumes:
+      - application/json
+      description: Search through stored memories using keywords or semantic search
+      parameters:
+      - description: Search query
+        in: query
+        name: query
+        required: true
+        type: string
+      - description: Filter by category (personal, project, business)
+        in: query
+        name: category
+        type: string
+      - description: Filter by type (fact, conversation, context, preference)
+        in: query
+        name: type
+        type: string
+      - description: 'Maximum number of results (default: 100, max: 1000)'
+        in: query
+        name: limit
+        type: integer
+      - description: 'Use semantic search (default: true)'
+        in: query
+        name: useSemanticSearch
+        type: boolean
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/mcp.SearchMemoriesResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Search memories
+      tags:
+      - memories
+    post:
+      consumes:
+      - application/json
+      description: Store important information that can be recalled later
+      parameters:
+      - description: Memory to store
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/mcp.StoreMemoryRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/mcp.StoreMemoryResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Store a memory
+      tags:
+      - memories
+  /memories/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Delete a memory by its ID
+      parameters:
+      - description: Memory ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/mcp.DeleteMemoryResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Delete a memory
+      tags:
+      - memories
+  /memories/stats:
+    get:
+      consumes:
+      - application/json
+      description: Get comprehensive statistics about stored memories including search
+        patterns and growth trends
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Get enhanced memory statistics
+      tags:
+      - memories
+  /system/performance:
+    get:
+      consumes:
+      - application/json
+      description: Get system-wide performance metrics and health indicators
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Get system performance statistics
+      tags:
+      - system
+  /users/activity-stats:
+    get:
+      consumes:
+      - application/json
+      description: Get comprehensive activity statistics for the authenticated user
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Get user activity statistics
+      tags:
+      - users
+securityDefinitions:
+  ApiKeyAuth:
+    in: header
+    name: X-API-Key
+    type: apiKey
+swagger: "2.0"

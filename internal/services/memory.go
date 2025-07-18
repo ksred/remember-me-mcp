@@ -21,9 +21,11 @@ type MemoryService struct {
 	embedding EmbeddingService
 	logger    zerolog.Logger
 	config    map[string]interface{}
+	userID    uint // User ID for scoping memories (0 means no scoping)
 }
 
-// NewMemoryService creates a new instance of MemoryService
+// NewMemoryService creates a new instance of MemoryService for local MCP mode
+// This uses the system user (ID: 1) for all operations
 func NewMemoryService(db *gorm.DB, embedding EmbeddingService, logger zerolog.Logger, config map[string]interface{}) *MemoryService {
 	if config == nil {
 		config = make(map[string]interface{})
@@ -33,6 +35,28 @@ func NewMemoryService(db *gorm.DB, embedding EmbeddingService, logger zerolog.Lo
 		embedding: embedding,
 		logger:    logger,
 		config:    config,
+		userID:    1, // System user for local MCP mode
+	}
+}
+
+// NewMemoryServiceWithUser creates a new instance of MemoryService for HTTP mode
+// This scopes all operations to the specified user
+func NewMemoryServiceWithUser(db *gorm.DB, embedding EmbeddingService, logger zerolog.Logger, config map[string]interface{}, userID uint) *MemoryService {
+	if config == nil {
+		config = make(map[string]interface{})
+	}
+	if userID == 0 {
+		panic("userID cannot be 0 for HTTP mode")
+	}
+	if userID == 1 {
+		panic("system user (ID: 1) cannot be used in HTTP mode")
+	}
+	return &MemoryService{
+		db:        db,
+		embedding: embedding,
+		logger:    logger,
+		config:    config,
+		userID:    userID,
 	}
 }
 
@@ -167,6 +191,7 @@ func (s *MemoryService) Store(ctx context.Context, req StoreRequest) (*models.Me
 
 	// Create new memory
 	memory := &models.Memory{
+		UserID:    s.userID,
 		Content:   req.Content,
 		Category:  req.Category,
 		Type:      req.Type,
@@ -259,7 +284,7 @@ func (s *MemoryService) Search(ctx context.Context, req SearchRequest) ([]*model
 	}
 
 	// Fall back to keyword search
-	query := s.db.WithContext(ctx).Model(&models.Memory{})
+	query := s.db.WithContext(ctx).Model(&models.Memory{}).Where("user_id = ?", s.userID)
 
 	// Apply keyword search if query is provided
 	if req.Query != "" {
@@ -313,7 +338,7 @@ func (s *MemoryService) SearchSemantic(ctx context.Context, req SearchRequest) (
 	}
 
 	// Build the query
-	query := s.db.WithContext(ctx).Model(&models.Memory{})
+	query := s.db.WithContext(ctx).Model(&models.Memory{}).Where("user_id = ?", s.userID)
 
 	// Apply category filter if provided
 	if req.Category != "" {
@@ -345,7 +370,7 @@ func (s *MemoryService) SearchSemantic(ctx context.Context, req SearchRequest) (
 	err = query.
 		Select("*, (1 - (embedding <=> ?)) as similarity", pgvector.NewVector(queryEmbedding)).
 		Where("embedding IS NOT NULL").
-		Order("similarity DESC").
+		Order("similarity DESC, created_at DESC").
 		Limit(limit).
 		Find(&memories).Error
 
@@ -359,16 +384,16 @@ func (s *MemoryService) SearchSemantic(ctx context.Context, req SearchRequest) (
 
 // Delete deletes a memory by ID
 func (s *MemoryService) Delete(ctx context.Context, id uint) error {
-	// Check if memory exists
+	// Check if memory exists and belongs to the user
 	var memory models.Memory
-	query := s.db.WithContext(ctx)
+	query := s.db.WithContext(ctx).Where("id = ? AND user_id = ?", id, s.userID)
 	
 	// For SQLite, omit fields that cause issues
 	if s.db.Dialector.Name() == "sqlite" {
 		query = query.Omit("embedding", "tags")
 	}
 	
-	if err := query.First(&memory, id).Error; err != nil {
+	if err := query.First(&memory).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return utils.WrapNotFoundError("memory", fmt.Sprintf("%d", id))
 		}
@@ -385,10 +410,10 @@ func (s *MemoryService) Delete(ctx context.Context, id uint) error {
 	return nil
 }
 
-// Count returns the total number of memories
+// Count returns the total number of memories for the user
 func (s *MemoryService) Count(ctx context.Context) (int64, error) {
 	var count int64
-	if err := s.db.WithContext(ctx).Model(&models.Memory{}).Count(&count).Error; err != nil {
+	if err := s.db.WithContext(ctx).Model(&models.Memory{}).Where("user_id = ?", s.userID).Count(&count).Error; err != nil {
 		s.logger.Error().Err(err).Msg("failed to count memories")
 		return 0, utils.WrapDatabaseError("count memories", err)
 	}
@@ -396,17 +421,17 @@ func (s *MemoryService) Count(ctx context.Context) (int64, error) {
 	return count, nil
 }
 
-// GetByID retrieves a memory by its ID
+// GetByID retrieves a memory by its ID for the user
 func (s *MemoryService) GetByID(ctx context.Context, id uint) (*models.Memory, error) {
 	var memory models.Memory
-	query := s.db.WithContext(ctx)
+	query := s.db.WithContext(ctx).Where("id = ? AND user_id = ?", id, s.userID)
 	
 	// For SQLite, omit fields that cause issues
 	if s.db.Dialector.Name() == "sqlite" {
 		query = query.Omit("embedding", "tags")
 	}
 	
-	if err := query.First(&memory, id).Error; err != nil {
+	if err := query.First(&memory).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, utils.WrapNotFoundError("memory", fmt.Sprintf("%d", id))
 		}
@@ -417,13 +442,13 @@ func (s *MemoryService) GetByID(ctx context.Context, id uint) (*models.Memory, e
 	return &memory, nil
 }
 
-// findByContent finds a memory with the exact same content
+// findByContent finds a memory with the exact same content for the user
 func (s *MemoryService) findByContent(ctx context.Context, content string) (*models.Memory, error) {
 	var memory models.Memory
 	// Create a new context with a longer timeout to avoid cancellation
 	dbCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	query := s.db.WithContext(dbCtx).Where("content = ?", content)
+	query := s.db.WithContext(dbCtx).Where("content = ? AND user_id = ?", content, s.userID)
 	
 	// For SQLite, omit fields that cause issues
 	if s.db.Dialector.Name() == "sqlite" {
@@ -437,13 +462,13 @@ func (s *MemoryService) findByContent(ctx context.Context, content string) (*mod
 	return &memory, nil
 }
 
-// findByUpdateKey finds a memory with the same update key (for intelligent updates)
+// findByUpdateKey finds a memory with the same update key (for intelligent updates) for the user
 func (s *MemoryService) findByUpdateKey(ctx context.Context, updateKey string) (*models.Memory, error) {
 	var memory models.Memory
 	// Create a new context with a longer timeout to avoid cancellation
 	dbCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	query := s.db.WithContext(dbCtx).Where("update_key = ?", updateKey)
+	query := s.db.WithContext(dbCtx).Where("update_key = ? AND user_id = ?", updateKey, s.userID)
 	
 	// For SQLite, omit fields that cause issues
 	if s.db.Dialector.Name() == "sqlite" {
@@ -584,7 +609,7 @@ func (s *MemoryService) GetMemoryStats(ctx context.Context) (map[string]interfac
 	categoryStats := make(map[string]int64)
 	for _, category := range []string{models.CategoryPersonal, models.CategoryProject, models.CategoryBusiness} {
 		var count int64
-		if err := s.db.WithContext(ctx).Model(&models.Memory{}).Where("category = ?", category).Count(&count).Error; err != nil {
+		if err := s.db.WithContext(ctx).Model(&models.Memory{}).Where("category = ? AND user_id = ?", category, s.userID).Count(&count).Error; err != nil {
 			s.logger.Error().Err(err).Str("category", category).Msg("failed to count memories by category")
 			continue
 		}
@@ -596,7 +621,7 @@ func (s *MemoryService) GetMemoryStats(ctx context.Context) (map[string]interfac
 	typeStats := make(map[string]int64)
 	for _, memType := range []string{models.TypeFact, models.TypeConversation, models.TypeContext, models.TypePreference} {
 		var count int64
-		if err := s.db.WithContext(ctx).Model(&models.Memory{}).Where("type = ?", memType).Count(&count).Error; err != nil {
+		if err := s.db.WithContext(ctx).Model(&models.Memory{}).Where("type = ? AND user_id = ?", memType, s.userID).Count(&count).Error; err != nil {
 			s.logger.Error().Err(err).Str("type", memType).Msg("failed to count memories by type")
 			continue
 		}
@@ -606,7 +631,7 @@ func (s *MemoryService) GetMemoryStats(ctx context.Context) (map[string]interfac
 	
 	// Get embedding stats
 	var embeddingCount int64
-	if err := s.db.WithContext(ctx).Model(&models.Memory{}).Where("embedding IS NOT NULL").Count(&embeddingCount).Error; err != nil {
+	if err := s.db.WithContext(ctx).Model(&models.Memory{}).Where("embedding IS NOT NULL AND user_id = ?", s.userID).Count(&embeddingCount).Error; err != nil {
 		s.logger.Error().Err(err).Msg("failed to count memories with embeddings")
 	} else {
 		stats["with_embeddings"] = embeddingCount
@@ -614,4 +639,9 @@ func (s *MemoryService) GetMemoryStats(ctx context.Context) (map[string]interfac
 	}
 	
 	return stats, nil
+}
+
+// GetEmbeddingService returns the embedding service
+func (s *MemoryService) GetEmbeddingService() EmbeddingService {
+	return s.embedding
 }

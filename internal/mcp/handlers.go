@@ -71,8 +71,8 @@ type DeleteMemoryResponse struct {
 	Error   string `json:"error,omitempty"`
 }
 
-// handleStoreMemory handles the store memory MCP tool call
-func (h *Handler) handleStoreMemory(ctx context.Context, params json.RawMessage) (interface{}, error) {
+// HandleStoreMemory handles the store memory MCP tool call
+func (h *Handler) HandleStoreMemory(ctx context.Context, params json.RawMessage) (interface{}, error) {
 	h.logger.Debug().RawJSON("params", params).Msg("handleStoreMemory called")
 
 	// Parse request
@@ -183,8 +183,8 @@ func (h *Handler) handleStoreMemory(ctx context.Context, params json.RawMessage)
 	}, nil
 }
 
-// handleSearchMemories handles the search memories MCP tool call
-func (h *Handler) handleSearchMemories(ctx context.Context, params json.RawMessage) (interface{}, error) {
+// HandleSearchMemories handles the search memories MCP tool call
+func (h *Handler) HandleSearchMemories(ctx context.Context, params json.RawMessage) (interface{}, error) {
 	h.logger.Debug().RawJSON("params", params).Msg("handleSearchMemories called")
 
 	// Parse request
@@ -280,8 +280,8 @@ func (h *Handler) handleSearchMemories(ctx context.Context, params json.RawMessa
 	}, nil
 }
 
-// handleDeleteMemory handles the delete memory MCP tool call
-func (h *Handler) handleDeleteMemory(ctx context.Context, params json.RawMessage) (interface{}, error) {
+// HandleDeleteMemory handles the delete memory MCP tool call
+func (h *Handler) HandleDeleteMemory(ctx context.Context, params json.RawMessage) (interface{}, error) {
 	h.logger.Debug().RawJSON("params", params).Msg("handleDeleteMemory called")
 
 	// Parse request

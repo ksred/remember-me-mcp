@@ -12,6 +12,7 @@ A powerful Model Context Protocol (MCP) server that provides persistent memory c
 - **Memory Categories**: Organize by type (fact, conversation, context, preference) and category (personal, project, business)
 - **Priority System**: Memories prioritized as low, medium, high, or critical
 - **PostgreSQL + pgvector**: Robust database with vector operations for semantic search
+- **HTTP API**: RESTful API with authentication for third-party integrations
 - **Comprehensive Testing**: Full test coverage for all components
 
 ## Quick Start
@@ -245,6 +246,32 @@ echo '{"content": "Meeting with John on Friday", "type": "context", "category": 
 echo '{"query": "John", "use_semantic_search": true}' | \
   ./remember-me-mcp
 ```
+
+## HTTP API Server
+
+The Remember Me MCP server can also run as a standalone HTTP API server, allowing third-party applications to integrate with the memory system.
+
+### Running the HTTP Server
+
+```bash
+# Using make
+make run-http
+
+# Or directly
+go run cmd/http-server/main.go -config config.json
+
+# With Docker
+docker run -p 8082:8082 remember-me-mcp:latest http-server
+```
+
+### Features
+
+- **User Registration & Authentication**: JWT-based authentication
+- **API Key Management**: Generate and manage API keys for programmatic access
+- **RESTful Endpoints**: Full CRUD operations for memories
+- **Swagger Documentation**: Interactive API docs at `/swagger`
+
+For detailed HTTP API documentation, see [docs/HTTP_API.md](docs/HTTP_API.md).
 
 ## Development
 
