@@ -1,0 +1,20 @@
+# Example vault file - Copy to vault.yml and encrypt with ansible-vault
+# ansible-vault encrypt ansible/group_vars/all/vault.yml
+
+# PostgreSQL credentials
+vault_postgres_password: "CHANGE_ME_STRONG_PASSWORD"
+vault_postgres_user: "remember_me"
+vault_postgres_db: "remember_me"
+
+# OpenAI API Key
+vault_openai_api_key: "sk-XXXXXXXXXXXXXXXXXXXX"
+
+# Remember Me API Admin User
+vault_admin_email: "admin@remembermcp.com"
+vault_admin_password: "CHANGE_ME_STRONG_PASSWORD"
+
+# JWT Secret for API
+vault_jwt_secret: "CHANGE_ME_RANDOM_SECRET_KEY"
+
+# Caddy email for Let's Encrypt
+vault_caddy_email: "admin@remembermcp.com"

@@ -1,0 +1,92 @@
+---
+- name: Debug variables
+  debug:
+    msg: "Timezone is: {{ timezone | default('NOT SET') }}"
+
+- name: Update apt cache
+  apt:
+    update_cache: yes
+    cache_valid_time: 3600
+
+- name: Install common packages
+  apt:
+    name:
+      - curl
+      - wget
+      - vim
+      - htop
+      - iotop
+      - net-tools
+      - unzip
+      - git
+      - python3-pip
+      - python3-setuptools
+      - software-properties-common
+      - apt-transport-https
+      - ca-certificates
+      - gnupg
+      - lsb-release
+      - logrotate
+      - cron
+    state: present
+
+- name: Set timezone
+  community.general.timezone:
+    name: "{{ timezone | default('UTC') }}"
+
+- name: Configure sysctl for production
+  ansible.posix.sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    state: present
+    reload: yes
+  loop:
+    - { key: "net.core.somaxconn", value: "65535" }
+    - { key: "net.ipv4.tcp_max_syn_backlog", value: "65535" }
+    - { key: "net.ipv4.ip_local_port_range", value: "1024 65535" }
+    - { key: "net.ipv4.tcp_tw_reuse", value: "1" }
+    - { key: "net.ipv4.tcp_fin_timeout", value: "30" }
+    - { key: "net.core.netdev_max_backlog", value: "65535" }
+    - { key: "vm.swappiness", value: "10" }
+    - { key: "fs.file-max", value: "2097152" }
+
+- name: Configure system limits
+  template:
+    src: limits.conf.j2
+    dest: /etc/security/limits.d/remember-me.conf
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Create log directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  loop:
+    - /var/log/caddy
+    - /var/log/remember-me
+
+- name: Configure journald
+  template:
+    src: journald.conf.j2
+    dest: /etc/systemd/journald.conf
+    owner: root
+    group: root
+    mode: '0644'
+  notify: restart journald
+
+- name: Enable automatic security updates
+  apt:
+    name: unattended-upgrades
+    state: present
+
+- name: Configure automatic security updates
+  template:
+    src: 50unattended-upgrades.j2
+    dest: /etc/apt/apt.conf.d/50unattended-upgrades
+    owner: root
+    group: root
+    mode: '0644'

@@ -1,0 +1,59 @@
+---
+- name: Deploy Remember Me MCP Service
+  hosts: all
+  become: yes
+  gather_facts: yes
+  
+  pre_tasks:
+    - name: Verify Ansible version
+      assert:
+        that:
+          - ansible_version.full is version('2.10', '>=')
+        msg: "This playbook requires Ansible 2.10 or higher"
+
+  roles:
+    - common
+    - postgresql
+    - firewall
+    - remember-me
+    - caddy
+
+  post_tasks:
+    - name: Run post-deployment health checks
+      block:
+        - name: Check PostgreSQL connectivity
+          postgresql_ping:
+            db: "{{ vault_postgres_db }}"
+            login_host: "{{ postgres_host }}"
+            login_user: "{{ vault_postgres_user }}"
+            login_password: "{{ vault_postgres_password }}"
+          become_user: "{{ remember_me_user }}"
+
+        - name: Check Remember Me API health
+          uri:
+            url: "http://localhost:{{ remember_me_port }}/health"
+            method: GET
+            status_code: 200
+          retries: 3
+          delay: 5
+
+        - name: Check Caddy reverse proxy
+          uri:
+            url: "https://{{ domain_name }}/health"
+            method: GET
+            status_code: 200
+            validate_certs: "{{ 'yes' if deploy_environment == 'production' else 'no' }}"
+          retries: 3
+          delay: 5
+
+    - name: Display deployment summary
+      debug:
+        msg:
+          - "Deployment completed successfully!"
+          - "Service URL: https://{{ domain_name }}"
+          - "API Documentation: https://{{ domain_name }}/swagger"
+          - ""
+          - "Next steps:"
+          - "1. Create your first user: curl -X POST https://{{ domain_name }}/api/v1/auth/register -H 'Content-Type: application/json' -d '{\"email\":\"user@example.com\",\"password\":\"password\"}'"
+          - "2. Generate API key through the API"
+          - "3. Configure Claude Desktop extension with the API URL and key"

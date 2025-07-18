@@ -1,0 +1,110 @@
+---
+- name: Install PostgreSQL prerequisites
+  apt:
+    name:
+      - ca-certificates
+      - wget
+      - gnupg
+      - lsb-release
+    state: present
+    update_cache: yes
+
+- name: Add PostgreSQL GPG key
+  apt_key:
+    url: https://www.postgresql.org/media/keys/ACCC4CF8.asc
+    state: present
+
+- name: Add PostgreSQL repository
+  apt_repository:
+    repo: "deb http://apt.postgresql.org/pub/repos/apt {{ ansible_distribution_release }}-pgdg main"
+    state: present
+    filename: pgdg
+
+- name: Update apt cache after adding PostgreSQL repo
+  apt:
+    update_cache: yes
+
+- name: Install PostgreSQL and dependencies
+  apt:
+    name:
+      - postgresql-{{ postgres_version }}
+      - postgresql-contrib-{{ postgres_version }}
+      - postgresql-{{ postgres_version }}-pgvector
+      - python3-psycopg2
+      - acl
+    state: present
+
+- name: Ensure PostgreSQL is running and enabled
+  systemd:
+    name: postgresql
+    state: started
+    enabled: yes
+
+- name: Configure PostgreSQL authentication
+  template:
+    src: pg_hba.conf.j2
+    dest: /etc/postgresql/{{ postgres_version }}/main/pg_hba.conf
+    owner: postgres
+    group: postgres
+    mode: '0640'
+  notify: restart postgresql
+
+- name: Configure PostgreSQL settings
+  template:
+    src: postgresql.conf.j2
+    dest: /etc/postgresql/{{ postgres_version }}/main/postgresql.conf
+    owner: postgres
+    group: postgres
+    mode: '0640'
+  notify: restart postgresql
+
+- name: Create database user
+  become_user: postgres
+  postgresql_user:
+    name: "{{ vault_postgres_user }}"
+    password: "{{ vault_postgres_password }}"
+    role_attr_flags: CREATEDB
+    state: present
+
+- name: Create database
+  become_user: postgres
+  postgresql_db:
+    name: "{{ vault_postgres_db }}"
+    owner: "{{ vault_postgres_user }}"
+    encoding: UTF-8
+    lc_collate: en_US.UTF-8
+    lc_ctype: en_US.UTF-8
+    template: template0
+    state: present
+
+- name: Install pgvector extension
+  become_user: postgres
+  postgresql_ext:
+    name: vector
+    db: "{{ vault_postgres_db }}"
+    state: present
+
+- name: Set up PostgreSQL backup directory
+  file:
+    path: /var/backups/postgresql
+    state: directory
+    owner: postgres
+    group: postgres
+    mode: '0750'
+
+- name: Create backup script
+  template:
+    src: backup.sh.j2
+    dest: /usr/local/bin/backup-remember-me-db
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Set up daily backup cron job
+  cron:
+    name: "Remember Me database backup"
+    minute: "0"
+    hour: "3"
+    job: "/usr/local/bin/backup-remember-me-db"
+    user: postgres
+    state: present

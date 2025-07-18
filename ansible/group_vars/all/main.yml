@@ -1,0 +1,14 @@
+# Common variables for all environments
+remember_me_user: remember-me
+remember_me_group: remember-me
+remember_me_home: /opt/remember-me
+remember_me_port: 8082
+remember_me_log_level: info
+
+# PostgreSQL settings
+postgres_version: 15
+postgres_host: localhost
+postgres_port: 5432
+
+# System settings
+timezone: UTC

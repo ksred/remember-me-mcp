@@ -1,0 +1,93 @@
+---
+- name: Install runtime dependencies
+  apt:
+    name:
+      - ca-certificates
+    state: present
+    update_cache: yes
+
+- name: Create remember-me group
+  group:
+    name: "{{ remember_me_group }}"
+    system: yes
+    state: present
+
+- name: Create remember-me user
+  user:
+    name: "{{ remember_me_user }}"
+    group: "{{ remember_me_group }}"
+    home: "{{ remember_me_home }}"
+    shell: /bin/bash
+    system: yes
+    create_home: yes
+
+- name: Create application directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ remember_me_user }}"
+    group: "{{ remember_me_group }}"
+    mode: '0755'
+  loop:
+    - "{{ remember_me_home }}"
+    - "{{ remember_me_home }}/bin"
+    - "{{ remember_me_home }}/logs"
+    - "{{ remember_me_home }}/config"
+    - "/var/log/remember-me"
+
+- name: Copy pre-built binary
+  copy:
+    src: "{{ playbook_dir }}/../../remember-me-http-linux"
+    dest: "{{ remember_me_home }}/bin/remember-me-http"
+    owner: "{{ remember_me_user }}"
+    group: "{{ remember_me_group }}"
+    mode: '0755'
+
+- name: Create environment file
+  template:
+    src: env.j2
+    dest: "{{ remember_me_home }}/.env"
+    owner: "{{ remember_me_user }}"
+    group: "{{ remember_me_group }}"
+    mode: '0600'
+
+- name: Create systemd service file
+  template:
+    src: remember-me.service.j2
+    dest: /etc/systemd/system/remember-me.service
+    owner: root
+    group: root
+    mode: '0644'
+  notify:
+    - reload systemd
+    - restart remember-me
+
+- name: Create logrotate configuration
+  template:
+    src: logrotate.j2
+    dest: /etc/logrotate.d/remember-me
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Enable and start Remember Me service
+  systemd:
+    name: remember-me
+    state: started
+    enabled: yes
+    daemon_reload: yes
+
+- name: Wait for service to be ready
+  wait_for:
+    port: "{{ remember_me_port }}"
+    host: localhost
+    delay: 5
+    timeout: 30
+
+- name: Check service health
+  uri:
+    url: "http://localhost:{{ remember_me_port }}/health"
+    method: GET
+    status_code: 200
+  retries: 5
+  delay: 2

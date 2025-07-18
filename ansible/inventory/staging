@@ -1,0 +1,9 @@
+[web_servers]
+staging.remembermcp.com ansible_host=YOUR_STAGING_IP ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/id_rsa
+
+[db_servers]
+staging.remembermcp.com
+
+[all:vars]
+ansible_python_interpreter=/usr/bin/python3
+deploy_environment=staging

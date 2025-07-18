@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "remember-me": {
+      "command": "node",
+      "args": ["/Users/ksred/Documents/GitHub/remember-me-mcp/scripts/mcp-http-proxy-v2.js"],
+      "env": {
+        "REMEMBER_ME_API_URL": "http://localhost:8082/api/v1/mcp",
+        "REMEMBER_ME_API_KEY": "YOUR_API_KEY_HERE",
+        "DEBUG": "true"
+      }
+    }
+  }
+}

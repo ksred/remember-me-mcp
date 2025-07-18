@@ -200,7 +200,7 @@ func (s *Server) createStoreMemoryHandler() server.ToolHandlerFunc {
 		}
 
 		// Call the existing handler
-		result, err := s.handler.handleStoreMemory(ctx, jsonData)
+		result, err := s.handler.HandleStoreMemory(ctx, jsonData)
 		if err != nil {
 			return &mcp.CallToolResult{
 				Content: []mcp.Content{
@@ -256,7 +256,7 @@ func (s *Server) createSearchMemoriesHandler() server.ToolHandlerFunc {
 		}
 
 		// Call the existing handler
-		result, err := s.handler.handleSearchMemories(ctx, jsonData)
+		result, err := s.handler.HandleSearchMemories(ctx, jsonData)
 		if err != nil {
 			return &mcp.CallToolResult{
 				Content: []mcp.Content{
@@ -312,7 +312,7 @@ func (s *Server) createDeleteMemoryHandler() server.ToolHandlerFunc {
 		}
 
 		// Call the existing handler
-		result, err := s.handler.handleDeleteMemory(ctx, jsonData)
+		result, err := s.handler.HandleDeleteMemory(ctx, jsonData)
 		if err != nil {
 			return &mcp.CallToolResult{
 				Content: []mcp.Content{

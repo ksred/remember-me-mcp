@@ -12,17 +12,28 @@ A powerful Model Context Protocol (MCP) server that provides persistent memory c
 - **Memory Categories**: Organize by type (fact, conversation, context, preference) and category (personal, project, business)
 - **Priority System**: Memories prioritized as low, medium, high, or critical
 - **PostgreSQL + pgvector**: Robust database with vector operations for semantic search
+- **HTTP API**: RESTful API with authentication for third-party integrations
 - **Comprehensive Testing**: Full test coverage for all components
 
 ## Quick Start
 
-### Option 1: One-Command Setup (Recommended)
+### Option 1: Claude Desktop Extension (Easiest)
+
+1. Download the latest `remember-me.dxt` from [Releases](https://github.com/ksred/remember-me-mcp/releases)
+2. Open Claude Desktop → Extensions → Add Extension
+3. Select the downloaded `remember-me.dxt` file
+4. Configure your API URL and API Key
+5. Start using Remember Me!
+
+For detailed extension instructions, see the [extension README](./extension/README.md).
+
+### Option 2: One-Command Setup (Recommended for Self-Hosting)
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/ksred/remember-me-mcp/main/scripts/setup.sh | bash
 ```
 
-### Option 2: Development Setup (Recommended for Development)
+### Option 3: Development Setup (Recommended for Development)
 
 ```bash
 git clone https://github.com/ksred/remember-me-mcp.git
@@ -32,7 +43,7 @@ make dev-setup
 
 This sets up PostgreSQL in Docker while running the MCP server locally.
 
-### Option 3: Docker Setup (Full Containerized)
+### Option 4: Docker Setup (Full Containerized)
 
 ```bash
 git clone https://github.com/ksred/remember-me-mcp.git
@@ -40,7 +51,7 @@ cd remember-me-mcp
 make docker-setup
 ```
 
-### Option 4: Manual Installation
+### Option 5: Manual Installation
 
 1. **Prerequisites**: PostgreSQL 15+, Go 1.21+, pgvector extension
 2. **Clone and build**:
@@ -245,6 +256,32 @@ echo '{"content": "Meeting with John on Friday", "type": "context", "category": 
 echo '{"query": "John", "use_semantic_search": true}' | \
   ./remember-me-mcp
 ```
+
+## HTTP API Server
+
+The Remember Me MCP server can also run as a standalone HTTP API server, allowing third-party applications to integrate with the memory system.
+
+### Running the HTTP Server
+
+```bash
+# Using make
+make run-http
+
+# Or directly
+go run cmd/http-server/main.go -config config.json
+
+# With Docker
+docker run -p 8082:8082 remember-me-mcp:latest http-server
+```
+
+### Features
+
+- **User Registration & Authentication**: JWT-based authentication
+- **API Key Management**: Generate and manage API keys for programmatic access
+- **RESTful Endpoints**: Full CRUD operations for memories
+- **Swagger Documentation**: Interactive API docs at `/swagger`
+
+For detailed HTTP API documentation, see [docs/HTTP_API.md](docs/HTTP_API.md).
 
 ## Development
 

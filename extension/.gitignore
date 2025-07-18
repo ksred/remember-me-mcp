@@ -1,0 +1,15 @@
+# Extension build output
+*.dxt
+
+# Dependencies (will be installed during build)
+server/node_modules/
+
+# OS files
+.DS_Store
+
+# IDE files
+.vscode/
+.idea/
+
+# Logs
+*.log

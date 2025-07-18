@@ -1,0 +1,74 @@
+---
+- name: Install UFW
+  apt:
+    name: ufw
+    state: present
+    update_cache: yes
+
+- name: Configure UFW defaults
+  ufw:
+    direction: "{{ item.direction }}"
+    policy: "{{ item.policy }}"
+  loop:
+    - { direction: incoming, policy: deny }
+    - { direction: outgoing, policy: allow }
+
+- name: Allow SSH connections
+  ufw:
+    rule: allow
+    port: "22"
+    proto: tcp
+    comment: "SSH access"
+
+- name: Allow HTTP connections
+  ufw:
+    rule: allow
+    port: "80"
+    proto: tcp
+    comment: "HTTP for Caddy"
+
+- name: Allow HTTPS connections
+  ufw:
+    rule: allow
+    port: "443"
+    proto: tcp
+    comment: "HTTPS for Caddy"
+
+- name: Enable UFW logging
+  ufw:
+    logging: 'on'
+
+- name: Enable UFW
+  ufw:
+    state: enabled
+
+- name: Configure fail2ban for additional security
+  block:
+    - name: Install fail2ban
+      apt:
+        name: fail2ban
+        state: present
+
+    - name: Create fail2ban local configuration
+      template:
+        src: jail.local.j2
+        dest: /etc/fail2ban/jail.local
+        owner: root
+        group: root
+        mode: '0644'
+      notify: restart fail2ban
+
+    - name: Create custom fail2ban filter for Remember Me API
+      template:
+        src: remember-me-api.conf.j2
+        dest: /etc/fail2ban/filter.d/remember-me-api.conf
+        owner: root
+        group: root
+        mode: '0644'
+      notify: restart fail2ban
+
+    - name: Ensure fail2ban is running and enabled
+      systemd:
+        name: fail2ban
+        state: started
+        enabled: yes

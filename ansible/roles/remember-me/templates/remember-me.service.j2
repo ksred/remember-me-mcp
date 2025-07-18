@@ -1,0 +1,42 @@
+[Unit]
+Description=Remember Me MCP HTTP Server
+Documentation=https://github.com/ksred/remember-me-mcp
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User={{ remember_me_user }}
+Group={{ remember_me_group }}
+WorkingDirectory={{ remember_me_home }}
+EnvironmentFile={{ remember_me_home }}/.env
+ExecStart={{ remember_me_home }}/bin/remember-me-http
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=always
+RestartSec=5
+StandardOutput=append:/var/log/remember-me/server.log
+StandardError=append:/var/log/remember-me/error.log
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/log/remember-me {{ remember_me_home }}
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+LockPersonality=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+RemoveIPC=true
+PrivateMounts=true
+
+# Resource limits
+LimitNOFILE=65535
+LimitNPROC=4096
+
+[Install]
+WantedBy=multi-user.target

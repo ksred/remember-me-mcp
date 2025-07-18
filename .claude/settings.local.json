@@ -6,7 +6,15 @@
       "Bash(./fix_tests.sh)",
       "Bash(timeout:*)",
       "WebFetch(domain:github.com)",
-      "Bash(PGPASSWORD=devpassword psql:*)"
+      "Bash(PGPASSWORD=devpassword psql:*)",
+      "Bash(curl:*)",
+      "WebFetch(domain:docs.anthropic.com)",
+      "Bash(./scripts/setup-postgres-schema.sh:*)",
+      "Bash(./scripts/docker-migrate-and-unify.sh:*)",
+      "Bash(./scripts/add-user-id-column.sh:*)",
+      "Bash(./scripts/migrate-memories-smart.sh:*)",
+      "Bash(docker exec:*)",
+      "Bash(node:*)"
     ],
     "deny": []
   }

@@ -13,7 +13,6 @@ import (
 	"github.com/ksred/remember-me-mcp/internal/config"
 	"github.com/ksred/remember-me-mcp/internal/database"
 	"github.com/ksred/remember-me-mcp/internal/mcp"
-	"github.com/ksred/remember-me-mcp/internal/models"
 	"github.com/ksred/remember-me-mcp/internal/services"
 	"github.com/ksred/remember-me-mcp/internal/utils"
 	"github.com/rs/zerolog"
@@ -204,9 +203,9 @@ func connectToDatabase(cfg *config.Config, logger zerolog.Logger) (*database.Dat
 func runMigrations(db *database.Database, logger zerolog.Logger) error {
 	logger.Info().Msg("Running database migrations")
 
-	// Run auto-migrations for models
-	if err := db.Migrate(&models.Memory{}); err != nil {
-		return fmt.Errorf("failed to migrate Memory model: %w", err)
+	// Use the centralized migration function
+	if err := database.RunMigrations(db.DB()); err != nil {
+		return fmt.Errorf("failed to run migrations: %w", err)
 	}
 
 	logger.Info().Msg("Database migrations completed successfully")

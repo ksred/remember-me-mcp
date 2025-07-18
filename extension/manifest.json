@@ -1,0 +1,82 @@
+{
+  "dxt_version": "0.1",
+  "name": "remember-me",
+  "display_name": "Remember Me",
+  "version": "1.0.0",
+  "description": "Persistent memory capabilities for Claude across conversations",
+  "long_description": "A powerful Model Context Protocol (MCP) server that provides persistent memory capabilities for Claude, allowing it to store and retrieve information across conversations. Features semantic search, intelligent categorization, and priority-based memory management.",
+  "author": {
+    "name": "Kyle Redelinghuys",
+    "email": "kyle@ksred.com"
+  },
+  "icon": "icon.svg",
+  "server": {
+    "type": "node",
+    "entry_point": "server/mcp-http-client.js",
+    "mcp_config": {
+      "command": "node",
+      "args": [
+        "${__dirname}/server/mcp-http-client.js"
+      ],
+      "env": {
+        "REMEMBER_ME_API_URL": "${user_config.api_url}",
+        "REMEMBER_ME_API_KEY": "${user_config.api_key}",
+        "NODE_ENV": "production"
+      }
+    }
+  },
+  "user_config": {
+    "api_url": {
+      "type": "string",
+      "title": "API URL",
+      "description": "The URL of your Remember Me HTTP API server",
+      "required": true,
+      "default": "http://localhost:8082/api/v1/mcp"
+    },
+    "api_key": {
+      "type": "string",
+      "title": "API Key",
+      "description": "Your Remember Me API key for authentication",
+      "sensitive": true,
+      "required": true
+    }
+  },
+  "tools": [
+    {
+      "name": "remember_memory",
+      "description": "Store a new memory with intelligent categorization"
+    },
+    {
+      "name": "search_memories",
+      "description": "Search memories using semantic similarity"
+    },
+    {
+      "name": "update_memory",
+      "description": "Update an existing memory"
+    },
+    {
+      "name": "delete_memory",
+      "description": "Delete a memory by ID"
+    },
+    {
+      "name": "list_recent_memories",
+      "description": "List recently stored memories"
+    }
+  ],
+  "prompts": [],
+  "keywords": [
+    "memory",
+    "persistence",
+    "context",
+    "knowledge-base",
+    "notes",
+    "semantic-search",
+    "mcp"
+  ],
+  "readme": "https://github.com/ksred/remember-me-mcp/blob/main/README.md",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ksred/remember-me-mcp"
+  },
+  "license": "MIT"
+}
