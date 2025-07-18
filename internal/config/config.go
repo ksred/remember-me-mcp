@@ -12,6 +12,8 @@ type Config struct {
 	OpenAI   OpenAI   `json:"openai" mapstructure:"openai"`
 	Memory   Memory   `json:"memory" mapstructure:"memory"`
 	Server   Server   `json:"server" mapstructure:"server"`
+	JWT      JWT      `json:"jwt" mapstructure:"jwt"`
+	HTTP     HTTP     `json:"http" mapstructure:"http"`
 }
 
 // Database represents database configuration
@@ -48,6 +50,17 @@ type Server struct {
 	Debug    bool   `json:"debug" mapstructure:"debug"`
 }
 
+// JWT represents JWT configuration
+type JWT struct {
+	Secret string `json:"secret" mapstructure:"secret"`
+}
+
+// HTTP represents HTTP server configuration  
+type HTTP struct {
+	Port         int      `json:"port" mapstructure:"port"`
+	AllowOrigins []string `json:"allow_origins" mapstructure:"allow_origins"`
+}
+
 // NewDefault returns a Config instance with default values
 func NewDefault() *Config {
 	return &Config{
@@ -56,7 +69,7 @@ func NewDefault() *Config {
 			Port:            5432,
 			User:            "postgres",
 			Password:        "",
-			DBName:          "remember_me",
+			DBName:          "postgres",
 			SSLMode:         "disable",
 			MaxConnections:  25,
 			MaxIdleConns:    10,
@@ -76,6 +89,13 @@ func NewDefault() *Config {
 		Server: Server{
 			LogLevel: "info",
 			Debug:    false,
+		},
+		JWT: JWT{
+			Secret: "change-me-in-production",
+		},
+		HTTP: HTTP{
+			Port: 8082,
+			AllowOrigins: []string{"http://localhost:3000", "http://localhost:5173", "http://localhost:5174"},
 		},
 	}
 }
@@ -134,6 +154,16 @@ func (c *Config) Validate() error {
 	}
 	if !validLogLevels[c.Server.LogLevel] {
 		return fmt.Errorf("invalid log level: %s", c.Server.LogLevel)
+	}
+
+	// JWT validation - allow default in development
+	if c.JWT.Secret == "" {
+		return fmt.Errorf("JWT secret cannot be empty")
+	}
+
+	// HTTP validation
+	if c.HTTP.Port <= 0 || c.HTTP.Port > 65535 {
+		return fmt.Errorf("HTTP port must be between 1 and 65535")
 	}
 
 	return nil

@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "remember-me-http": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-client-stdio",
+        "http://localhost:8082/api/v1/mcp"
+      ],
+      "env": {
+        "MCP_AUTH_HEADER": "X-API-Key",
+        "MCP_AUTH_TOKEN": "your-api-key-here"
+      }
+    }
+  }
+}

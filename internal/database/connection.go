@@ -164,6 +164,13 @@ func (d *Database) DB() *gorm.DB {
 	return d.db
 }
 
+// SetDB sets the underlying gorm.DB instance (for testing)
+func (d *Database) SetDB(db *gorm.DB) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.db = db
+}
+
 // buildDSN constructs the PostgreSQL DSN from config
 func (d *Database) buildDSN() string {
 	host := d.getConfigString("host", "localhost")

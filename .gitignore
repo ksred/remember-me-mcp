@@ -65,3 +65,5 @@ coverage.html
 # Env
 .env*
 remember-me-mcp
+
+node_modules/
