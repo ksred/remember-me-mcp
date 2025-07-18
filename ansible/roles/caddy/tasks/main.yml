@@ -5,6 +5,7 @@
       - debian-keyring
       - debian-archive-keyring
       - apt-transport-https
+      - python3-passlib
     state: present
     update_cache: yes
 

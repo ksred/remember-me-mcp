@@ -1,0 +1,9 @@
+# Staging-specific variables
+domain_name: staging.remembermcp.com
+enable_debug: true
+log_level: debug
+
+# Resource limits (smaller for staging)
+postgres_max_connections: 100
+postgres_shared_buffers: 128MB
+postgres_effective_cache_size: 512MB

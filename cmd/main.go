@@ -13,7 +13,6 @@ import (
 	"github.com/ksred/remember-me-mcp/internal/config"
 	"github.com/ksred/remember-me-mcp/internal/database"
 	"github.com/ksred/remember-me-mcp/internal/mcp"
-	"github.com/ksred/remember-me-mcp/internal/models"
 	"github.com/ksred/remember-me-mcp/internal/services"
 	"github.com/ksred/remember-me-mcp/internal/utils"
 	"github.com/rs/zerolog"

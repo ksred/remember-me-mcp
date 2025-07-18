@@ -1,5 +1,5 @@
 # Production-specific variables
-domain_name: api.remembermemcp.com
+domain_name: api.remembermcp.com
 enable_debug: false
 log_level: info
 

@@ -1,0 +1,16 @@
+---
+- name: Test variable loading
+  hosts: all
+  gather_facts: no
+  tasks:
+    - name: Debug all variables
+      debug:
+        msg: |
+          timezone: {{ timezone | default('NOT SET') }}
+          remember_me_user: {{ remember_me_user | default('NOT SET') }}
+          vault_postgres_password: {{ vault_postgres_password | default('NOT SET') }}
+          postgres_host: {{ postgres_host | default('NOT SET') }}
+          
+    - name: Show all host variables
+      debug:
+        var: hostvars[inventory_hostname]

@@ -6,4 +6,4 @@ staging.remembermcp.com
 
 [all:vars]
 ansible_python_interpreter=/usr/bin/python3
-environment=staging
+deploy_environment=staging

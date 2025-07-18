@@ -1,34 +1,16 @@
 ---
-- name: Install build dependencies
+- name: Install runtime dependencies
   apt:
     name:
-      - git
-      - build-essential
-      - wget
+      - ca-certificates
     state: present
     update_cache: yes
 
-- name: Download and install Go
-  block:
-    - name: Download Go binary
-      get_url:
-        url: "https://go.dev/dl/go1.21.5.linux-amd64.tar.gz"
-        dest: "/tmp/go1.21.5.linux-amd64.tar.gz"
-        mode: '0644'
-    
-    - name: Extract Go binary
-      unarchive:
-        src: "/tmp/go1.21.5.linux-amd64.tar.gz"
-        dest: "/usr/local"
-        remote_src: yes
-        creates: "/usr/local/go/bin/go"
-    
-    - name: Add Go to PATH
-      lineinfile:
-        path: /etc/profile.d/go.sh
-        line: 'export PATH=$PATH:/usr/local/go/bin'
-        create: yes
-        mode: '0644'
+- name: Create remember-me group
+  group:
+    name: "{{ remember_me_group }}"
+    system: yes
+    state: present
 
 - name: Create remember-me user
   user:
@@ -53,25 +35,13 @@
     - "{{ remember_me_home }}/config"
     - "/var/log/remember-me"
 
-- name: Clone or update repository
-  git:
-    repo: "https://github.com/ksred/remember-me-mcp.git"
-    dest: "{{ remember_me_home }}/src"
-    version: "{{ git_branch | default('main') }}"
-    force: yes
-  become_user: "{{ remember_me_user }}"
-
-- name: Build the application
-  shell: |
-    export PATH=$PATH:/usr/local/go/bin
-    cd {{ remember_me_home }}/src
-    go mod download
-    go build -o {{ remember_me_home }}/bin/remember-me-http cmd/http-server/main.go
-  environment:
-    GOOS: linux
-    GOARCH: amd64
-    CGO_ENABLED: 1
-  become_user: "{{ remember_me_user }}"
+- name: Copy pre-built binary
+  copy:
+    src: "{{ playbook_dir }}/../../remember-me-http-linux"
+    dest: "{{ remember_me_home }}/bin/remember-me-http"
+    owner: "{{ remember_me_user }}"
+    group: "{{ remember_me_group }}"
+    mode: '0755'
 
 - name: Create environment file
   template:

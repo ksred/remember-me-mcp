@@ -233,6 +233,7 @@ release:
 # Cross-compilation targets
 build-linux:
 	GOOS=linux GOARCH=amd64 go build -o remember-me-mcp-linux cmd/main.go
+	GOOS=linux GOARCH=amd64 go build -o remember-me-http-linux cmd/http-server/main.go
 
 build-windows:
 	GOOS=windows GOARCH=amd64 go build -o remember-me-mcp-windows.exe cmd/main.go

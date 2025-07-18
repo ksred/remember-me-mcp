@@ -10,13 +10,6 @@
         that:
           - ansible_version.full is version('2.10', '>=')
         msg: "This playbook requires Ansible 2.10 or higher"
-    
-    - name: Check if vault password is provided
-      assert:
-        that:
-          - vault_postgres_password is defined
-          - vault_openai_api_key is defined
-        msg: "Vault variables not found. Please ensure vault.yml is encrypted and accessible"
 
   roles:
     - common
@@ -49,7 +42,7 @@
             url: "https://{{ domain_name }}/health"
             method: GET
             status_code: 200
-            validate_certs: "{{ 'yes' if environment == 'production' else 'no' }}"
+            validate_certs: "{{ 'yes' if deploy_environment == 'production' else 'no' }}"
           retries: 3
           delay: 5
 

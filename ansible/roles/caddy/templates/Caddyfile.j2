@@ -5,7 +5,7 @@
     email {{ vault_caddy_email }}
     
     # Production settings
-    {% if environment == "production" %}
+    {% if deploy_environment == "production" %}
     acme_ca https://acme-v02.api.letsencrypt.org/directory
     {% else %}
     # Staging uses Let's Encrypt staging environment

@@ -86,3 +86,14 @@ ansible/inventory/.cache/
 # Extension build artifacts
 extension/*.dxt
 extension/remember-me.dxt
+
+# Linux binaries
+*-linux
+
+# Ansible inventory vault files (keep examples)
+ansible/inventory/group_vars/*/vault.yml
+ansible/.vault_pass
+
+# Local test files
+scripts/migrate_memories.go
+scripts/export_memories.go
