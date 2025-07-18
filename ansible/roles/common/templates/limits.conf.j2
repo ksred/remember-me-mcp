@@ -6,8 +6,8 @@
 * hard nofile 65535
 root soft nofile 65535
 root hard nofile 65535
-{{ remember_me_user }} soft nofile 65535
-{{ remember_me_user }} hard nofile 65535
+{{ remember_me_user | default('remember-me') }} soft nofile 65535
+{{ remember_me_user | default('remember-me') }} hard nofile 65535
 caddy soft nofile 65535
 caddy hard nofile 65535
 
@@ -16,5 +16,5 @@ caddy hard nofile 65535
 * hard nproc 32768
 root soft nproc 32768
 root hard nproc 32768
-{{ remember_me_user }} soft nproc 32768
-{{ remember_me_user }} hard nproc 32768
+{{ remember_me_user | default('remember-me') }} soft nproc 32768
+{{ remember_me_user | default('remember-me') }} hard nproc 32768

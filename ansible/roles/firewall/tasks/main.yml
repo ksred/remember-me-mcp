@@ -34,15 +34,6 @@
     proto: tcp
     comment: "HTTPS for Caddy"
 
-- name: Allow established connections
-  ufw:
-    rule: allow
-    direction: in
-    proto: any
-    from_ip: any
-    to_ip: any
-    state: established
-
 - name: Enable UFW logging
   ufw:
     logging: 'on'

@@ -1,4 +1,29 @@
 ---
+- name: Install PostgreSQL prerequisites
+  apt:
+    name:
+      - ca-certificates
+      - wget
+      - gnupg
+      - lsb-release
+    state: present
+    update_cache: yes
+
+- name: Add PostgreSQL GPG key
+  apt_key:
+    url: https://www.postgresql.org/media/keys/ACCC4CF8.asc
+    state: present
+
+- name: Add PostgreSQL repository
+  apt_repository:
+    repo: "deb http://apt.postgresql.org/pub/repos/apt {{ ansible_distribution_release }}-pgdg main"
+    state: present
+    filename: pgdg
+
+- name: Update apt cache after adding PostgreSQL repo
+  apt:
+    update_cache: yes
+
 - name: Install PostgreSQL and dependencies
   apt:
     name:
@@ -8,7 +33,6 @@
       - python3-psycopg2
       - acl
     state: present
-    update_cache: yes
 
 - name: Ensure PostgreSQL is running and enabled
   systemd:

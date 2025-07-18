@@ -1,9 +1,13 @@
 [web_servers]
-api.remembermcp.com ansible_host=YOUR_PRODUCTION_IP ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/id_rsa
+api.remembermemcp.com ansible_host=138.68.153.184 ansible_user=root ansible_ssh_private_key_file=~/.ssh/id_rsa
 
 [db_servers]
-api.remembermcp.com
+api.remembermemcp.com
+
+[production:children]
+web_servers
+db_servers
 
 [all:vars]
 ansible_python_interpreter=/usr/bin/python3
-environment=production
+deploy_environment=production

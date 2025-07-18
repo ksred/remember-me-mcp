@@ -147,8 +147,8 @@ sudo tail -f /var/log/remember-me/server.log
 ```
 
 ### Health Checks
-- Application health: `https://api.remembermcp.com/health`
-- Metrics (protected): `https://api.remembermcp.com/metrics`
+- Application health: `https://api.remembermemcp.com/health`
+- Metrics (protected): `https://api.remembermemcp.com/metrics`
 
 ## Backup and Recovery
 
@@ -237,7 +237,7 @@ ansible-playbook -i inventory/production playbooks/deploy.yml --check
 ### Multiple Environments
 ```bash
 # Deploy to specific hosts
-ansible-playbook -i inventory/production playbooks/deploy.yml --limit "api.remembermcp.com"
+ansible-playbook -i inventory/production playbooks/deploy.yml --limit "api.remembermemcp.com"
 
 # Deploy with custom variables
 ansible-playbook -i inventory/production playbooks/deploy.yml -e "remember_me_port=8083"

@@ -50,6 +50,10 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Failed to load configuration: %v\n", err)
 		os.Exit(1)
 	}
+	
+	// Debug: Print database configuration
+	fmt.Printf("Database Config: Host=%s, Port=%d, User=%s, DBName=%s\n", 
+		cfg.Database.Host, cfg.Database.Port, cfg.Database.User, cfg.Database.DBName)
 
 	// Set up logging
 	logger := setupLogging(cfg)
@@ -124,16 +128,14 @@ func main() {
 
 // loadConfiguration loads configuration from file or environment
 func loadConfiguration(configPath string) (*config.Config, error) {
-	cfg, err := config.LoadConfig(configPath)
-	if err != nil {
-		// If we can't load config, try with defaults
-		cfg = config.NewDefault()
-		
-		// Validate the default configuration
-		if err := cfg.Validate(); err != nil {
-			return nil, err
-		}
+	// Use LoadConfigOrDefault which handles environment variables even when config file is missing
+	cfg := config.LoadConfigOrDefault(configPath)
+	
+	// Validate the configuration
+	if err := cfg.Validate(); err != nil {
+		return nil, err
 	}
+	
 	return cfg, nil
 }
 

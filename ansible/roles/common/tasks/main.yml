@@ -1,4 +1,8 @@
 ---
+- name: Debug variables
+  debug:
+    msg: "Timezone is: {{ timezone | default('NOT SET') }}"
+
 - name: Update apt cache
   apt:
     update_cache: yes
@@ -27,11 +31,11 @@
     state: present
 
 - name: Set timezone
-  timezone:
-    name: "{{ timezone }}"
+  community.general.timezone:
+    name: "{{ timezone | default('UTC') }}"
 
 - name: Configure sysctl for production
-  sysctl:
+  ansible.posix.sysctl:
     name: "{{ item.key }}"
     value: "{{ item.value }}"
     state: present

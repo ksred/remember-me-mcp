@@ -152,7 +152,7 @@ if [ $? -eq 0 ]; then
     echo -e "${GREEN}======================================${NC}"
     
     if [ "$ENVIRONMENT" == "production" ]; then
-        echo -e "Service URL: ${YELLOW}https://api.remembermcp.com${NC}"
+        echo -e "Service URL: ${YELLOW}https://api.remembermemcp.com${NC}"
     else
         echo -e "Service URL: ${YELLOW}https://staging.remembermcp.com${NC}"
     fi

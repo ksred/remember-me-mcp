@@ -16,27 +16,9 @@
         -Server
     }
     
-    # CORS configuration for API
-    @cors_preflight {
-        method OPTIONS
-    }
-    handle @cors_preflight {
-        header {
-            Access-Control-Allow-Origin "*"
-            Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS"
-            Access-Control-Allow-Headers "Authorization, Content-Type, X-Requested-With"
-            Access-Control-Max-Age "86400"
-        }
-        respond 204
-    }
-    
+    # Let the backend handle CORS
     # API proxy configuration
     handle /api/* {
-        header {
-            Access-Control-Allow-Origin "*"
-            Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS"
-            Access-Control-Allow-Headers "Authorization, Content-Type, X-Requested-With"
-        }
         
         reverse_proxy localhost:{{ remember_me_port }} {
             header_up X-Real-IP {remote_host}
@@ -76,11 +58,8 @@
         respond "OK" 200
     }
     
-    # Metrics endpoint (protected)
+    # Metrics endpoint - let the app handle auth
     handle /metrics {
-        basicauth {
-            admin {{ vault_admin_password | password_hash('bcrypt') }}
-        }
         reverse_proxy localhost:{{ remember_me_port }}
     }
     
