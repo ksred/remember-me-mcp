@@ -1,0 +1,13 @@
+/var/log/remember-me/*.log {
+    daily
+    rotate 14
+    missingok
+    notifempty
+    compress
+    delaycompress
+    sharedscripts
+    postrotate
+        systemctl reload remember-me > /dev/null 2>&1 || true
+    endscript
+    create 0644 {{ remember_me_user }} {{ remember_me_group }}
+}

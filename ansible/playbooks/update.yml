@@ -1,0 +1,49 @@
+---
+- name: Update Remember Me MCP Service
+  hosts: web_servers
+  become: yes
+  gather_facts: yes
+  
+  vars:
+    deployment_id: "{{ ansible_date_time.epoch }}"
+  
+  tasks:
+    - name: Create deployment backup
+      block:
+        - name: Stop service for backup
+          systemd:
+            name: remember-me
+            state: stopped
+
+        - name: Backup current binary
+          copy:
+            src: "{{ remember_me_home }}/bin/remember-me-http"
+            dest: "{{ remember_me_home }}/bin/remember-me-http.{{ deployment_id }}"
+            remote_src: yes
+            owner: "{{ remember_me_user }}"
+            group: "{{ remember_me_group }}"
+
+        - name: Start service after backup
+          systemd:
+            name: remember-me
+            state: started
+
+    - name: Deploy new version
+      include_role:
+        name: remember-me
+        tasks_from: main
+      vars:
+        skip_initial_setup: true
+
+    - name: Cleanup old backups
+      shell: |
+        find {{ remember_me_home }}/bin -name "remember-me-http.*" -type f -mtime +7 -delete
+      become_user: "{{ remember_me_user }}"
+
+    - name: Verify deployment
+      uri:
+        url: "http://localhost:{{ remember_me_port }}/health"
+        method: GET
+        status_code: 200
+      retries: 5
+      delay: 3

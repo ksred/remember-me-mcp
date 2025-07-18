@@ -1,0 +1,9 @@
+[web_servers]
+api.remembermcp.com ansible_host=YOUR_PRODUCTION_IP ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/id_rsa
+
+[db_servers]
+api.remembermcp.com
+
+[all:vars]
+ansible_python_interpreter=/usr/bin/python3
+environment=production

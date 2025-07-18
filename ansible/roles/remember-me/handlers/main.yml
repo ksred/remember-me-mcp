@@ -1,0 +1,9 @@
+---
+- name: reload systemd
+  systemd:
+    daemon_reload: yes
+
+- name: restart remember-me
+  systemd:
+    name: remember-me
+    state: restarted
