@@ -97,3 +97,5 @@ ansible/.vault_pass
 # Local test files
 scripts/migrate_memories.go
 scripts/export_memories.go
+
+remember-me-http

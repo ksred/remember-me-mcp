@@ -123,6 +123,10 @@ func setDefaults(v *viper.Viper) {
 	
 	// HTTP defaults
 	v.SetDefault("http.port", 8082)
+	
+	// Encryption defaults
+	v.SetDefault("encryption.enabled", false)
+	v.SetDefault("encryption.master_key", "")
 }
 
 // bindEnvVars binds specific environment variables to configuration keys
@@ -147,6 +151,10 @@ func bindEnvVars(v *viper.Viper) {
 	
 	// CORS allowed origins
 	v.BindEnv("http.allow_origins", "CORS_ALLOWED_ORIGINS", "REMEMBER_ME_HTTP_ALLOW_ORIGINS")
+	
+	// Encryption settings
+	v.BindEnv("encryption.enabled", "ENCRYPTION_ENABLED", "REMEMBER_ME_ENCRYPTION_ENABLED")
+	v.BindEnv("encryption.master_key", "ENCRYPTION_MASTER_KEY", "REMEMBER_ME_ENCRYPTION_MASTER_KEY")
 }
 
 // parseDatabaseURL parses a PostgreSQL connection URL and sets individual database config values

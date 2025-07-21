@@ -447,8 +447,8 @@ func (s *MemoryService) Search(ctx context.Context, req SearchRequest) ([]*model
 		query = query.Limit(100)
 	}
 
-	// Order by priority (high to low) then by created_at descending (newest first)
-	query = query.Order("CASE WHEN priority = 'critical' THEN 1 WHEN priority = 'high' THEN 2 WHEN priority = 'medium' THEN 3 WHEN priority = 'low' THEN 4 ELSE 3 END, created_at DESC")
+	// Order by created_at descending (newest first)
+	query = query.Order("created_at DESC")
 
 	var memories []*models.Memory
 	if err := query.Omit("embedding", "tags").Find(&memories).Error; err != nil {
@@ -515,7 +515,7 @@ func (s *MemoryService) SearchSemantic(ctx context.Context, req SearchRequest) (
 	err = query.
 		Select("*, (1 - (embedding <=> ?)) as similarity", pgvector.NewVector(queryEmbedding)).
 		Where("embedding IS NOT NULL").
-		Order("similarity DESC, created_at DESC").
+		Order("created_at DESC").
 		Limit(limit).
 		Find(&memories).Error
 

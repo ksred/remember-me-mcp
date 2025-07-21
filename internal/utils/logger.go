@@ -39,21 +39,21 @@ func NewLogger(config LoggerConfig) zerolog.Logger {
 		// Create log directory if it doesn't exist
 		logDir := filepath.Dir(config.LogFile)
 		if err := os.MkdirAll(logDir, 0755); err != nil {
-			// Fall back to stderr if file creation fails
-			output = os.Stderr
+			// Fall back to stdout if file creation fails
+			output = os.Stdout
 		} else {
 			// Open log file
 			file, err := os.OpenFile(config.LogFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 			if err != nil {
-				// Fall back to stderr if file opening fails
-				output = os.Stderr
+				// Fall back to stdout if file opening fails
+				output = os.Stdout
 			} else {
 				output = file
 			}
 		}
 	} else {
-		// Default to stderr
-		output = os.Stderr
+		// Default to stdout for systemd compatibility
+		output = os.Stdout
 	}
 	
 	// Apply pretty formatting if requested (only for stderr)

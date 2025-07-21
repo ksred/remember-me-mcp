@@ -106,8 +106,9 @@ func (s *ActivityService) GetMemoryGrowthStats(ctx context.Context, userID *uint
 		date := now.AddDate(0, 0, -i)
 		dateStr := date.Format("2006-01-02")
 		
-		query := s.db.WithContext(ctx).Model(&models.ActivityLog{}).
-			Where("type = ? AND DATE(created_at) = ?", models.ActivityMemoryStored, date.Format("2006-01-02"))
+		// Count memories directly from the memories table instead of activity logs
+		query := s.db.WithContext(ctx).Model(&models.Memory{}).
+			Where("DATE(created_at) = ?", dateStr)
 
 		if userID != nil {
 			query = query.Where("user_id = ?", *userID)

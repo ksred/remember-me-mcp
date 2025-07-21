@@ -12,6 +12,7 @@ import (
 
 	"github.com/ksred/remember-me-mcp/internal/config"
 	"github.com/ksred/remember-me-mcp/internal/database"
+	"github.com/ksred/remember-me-mcp/internal/database/migrations"
 	"github.com/ksred/remember-me-mcp/internal/mcp"
 	"github.com/ksred/remember-me-mcp/internal/services"
 	"github.com/ksred/remember-me-mcp/internal/utils"
@@ -22,8 +23,12 @@ const version = "v0.2.0-debug-context-fix"
 
 func main() {
 	// Parse command line flags
-	var configPath string
+	var (
+		configPath     string
+		skipMigrations bool
+	)
 	flag.StringVar(&configPath, "config", "", "Path to configuration file")
+	flag.BoolVar(&skipMigrations, "skip-migrations", false, "Skip running database migrations")
 	flag.Parse()
 
 	// Load configuration
@@ -56,16 +61,35 @@ func main() {
 		}
 	}()
 
+	// Create encryption service early for migrations
+	encryptionService := createEncryptionService(cfg, logger)
+	
 	// Run migrations
 	if err := runMigrations(db, logger); err != nil {
 		logger.Fatal().Err(err).Msg("Failed to run migrations")
 	}
+	
+	// Run versioned migrations
+	if !skipMigrations {
+		if err := runVersionedMigrations(ctx, db, encryptionService, logger); err != nil {
+			logger.Fatal().Err(err).Msg("Failed to run versioned migrations")
+		}
+	} else {
+		logger.Warn().Msg("Skipping versioned migrations as requested")
+	}
 
 	// Create services
 	embeddingService := createEmbeddingService(cfg, logger)
-	memoryService := services.NewMemoryService(db.DB(), embeddingService, logger, map[string]interface{}{
+	
+	// Create memory service with encryption support
+	serviceConfig := map[string]interface{}{
 		"memory_limit": cfg.Memory.MaxMemories,
-	})
+	}
+	if encryptionService != nil {
+		serviceConfig["encryption_service"] = encryptionService
+	}
+	
+	memoryService := services.NewMemoryService(db.DB(), embeddingService, logger, serviceConfig)
 
 	// Create and configure MCP server
 	mcpServer, err := mcp.NewServer(memoryService, logger)
@@ -232,4 +256,44 @@ func createEmbeddingService(cfg *config.Config, logger zerolog.Logger) services.
 	}
 
 	return embeddingService
+}
+
+// createEncryptionService creates the encryption service if enabled
+func createEncryptionService(cfg *config.Config, logger zerolog.Logger) *utils.EncryptionService {
+	if !cfg.Encryption.Enabled {
+		logger.Info().Msg("Encryption is disabled")
+		return nil
+	}
+	
+	if cfg.Encryption.MasterKey == "" {
+		logger.Error().Msg("Encryption is enabled but no master key provided")
+		return nil
+	}
+	
+	encryptionService, err := utils.NewEncryptionService(cfg.Encryption.MasterKey)
+	if err != nil {
+		logger.Error().Err(err).Msg("Failed to create encryption service")
+		return nil
+	}
+	
+	logger.Info().Msg("Encryption service created successfully")
+	return encryptionService
+}
+
+// runVersionedMigrations runs versioned database migrations
+func runVersionedMigrations(ctx context.Context, db *database.Database, encryptionService *utils.EncryptionService, logger zerolog.Logger) error {
+	runner := database.NewMigrationRunner(db.DB(), logger)
+	
+	// Register all migrations
+	migrations := migrations.GetMigrations(encryptionService)
+	for _, m := range migrations {
+		runner.Register(m)
+	}
+	
+	// Run pending migrations
+	if err := runner.Run(ctx); err != nil {
+		return fmt.Errorf("failed to run versioned migrations: %w", err)
+	}
+	
+	return nil
 }

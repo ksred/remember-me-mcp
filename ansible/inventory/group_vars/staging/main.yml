@@ -7,3 +7,6 @@ log_level: debug
 postgres_max_connections: 100
 postgres_shared_buffers: 128MB
 postgres_effective_cache_size: 512MB
+
+# Enable encryption in staging for testing
+encryption_enabled: true
