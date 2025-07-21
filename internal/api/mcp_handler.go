@@ -191,6 +191,13 @@ func (s *Server) handleMCPListTools() (interface{}, error) {
 						"type":        "string",
 						"description": "The content of the memory to store",
 					},
+					"tags": map[string]interface{}{
+						"type":        "array",
+						"description": "Optional tags to categorize the memory",
+						"items": map[string]interface{}{
+							"type": "string",
+						},
+					},
 					"metadata": map[string]interface{}{
 						"type":        "object",
 						"description": "Optional metadata for the memory",
@@ -231,6 +238,51 @@ func (s *Server) handleMCPListTools() (interface{}, error) {
 					},
 				},
 				Required: []string{"query"},
+			},
+		},
+		{
+			Name:        "update_memory",
+			Description: "Update an existing memory by ID. Provide only the fields you want to update.",
+			InputSchema: mcpTypes.ToolInputSchema{
+				Type: "object",
+				Properties: map[string]interface{}{
+					"id": map[string]interface{}{
+						"type":        "integer",
+						"description": "ID of the memory to update",
+						"minimum":     1,
+					},
+					"type": map[string]interface{}{
+						"type":        "string",
+						"description": "Type of memory: fact, conversation, context, or preference",
+						"enum":        []string{"fact", "conversation", "context", "preference"},
+					},
+					"category": map[string]interface{}{
+						"type":        "string",
+						"description": "Category of memory: personal, project, or business",
+						"enum":        []string{"personal", "project", "business"},
+					},
+					"content": map[string]interface{}{
+						"type":        "string",
+						"description": "The new content of the memory",
+					},
+					"priority": map[string]interface{}{
+						"type":        "string",
+						"description": "Priority level: low, medium, or high",
+						"enum":        []string{"low", "medium", "high"},
+					},
+					"tags": map[string]interface{}{
+						"type":        "array",
+						"description": "Tags to categorize the memory",
+						"items": map[string]interface{}{
+							"type": "string",
+						},
+					},
+					"metadata": map[string]interface{}{
+						"type":        "object",
+						"description": "Metadata for the memory",
+					},
+				},
+				Required: []string{"id"},
 			},
 		},
 		{
@@ -277,6 +329,8 @@ func (s *Server) handleMCPCallTool(ctx context.Context, params json.RawMessage, 
 		result, err = handler.HandleStoreMemory(ctx, callParams.Arguments)
 	case "search_memories":
 		result, err = handler.HandleSearchMemories(ctx, callParams.Arguments)
+	case "update_memory":
+		result, err = handler.HandleUpdateMemory(ctx, callParams.Arguments)
 	case "delete_memory":
 		result, err = handler.HandleDeleteMemory(ctx, callParams.Arguments)
 	default:
@@ -359,14 +413,22 @@ func (s *Server) handleMCPReadResource(ctx context.Context, params json.RawMessa
 
 // createScopedMemoryService creates a memory service scoped to a specific user
 func (s *Server) createScopedMemoryService(userID uint) *services.MemoryService {
+	// Build config with memory limit and encryption service
+	serviceConfig := map[string]interface{}{
+		"memory_limit": s.config.Memory.MaxMemories,
+	}
+	
+	// Pass encryption service if available
+	if encSvc := s.memoryService.GetEncryptionService(); encSvc != nil {
+		serviceConfig["encryption_service"] = encSvc
+	}
+	
 	// Create a user-scoped memory service for this request
 	return services.NewMemoryServiceWithUser(
 		s.db.DB(),
 		s.memoryService.GetEmbeddingService(),
 		s.logger,
-		map[string]interface{}{
-			"memory_limit": s.config.Memory.MaxMemories,
-		},
+		serviceConfig,
 		userID,
 	)
 }

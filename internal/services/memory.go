@@ -17,11 +17,12 @@ import (
 
 // MemoryService handles memory-related business logic
 type MemoryService struct {
-	db        *gorm.DB
-	embedding EmbeddingService
-	logger    zerolog.Logger
-	config    map[string]interface{}
-	userID    uint // User ID for scoping memories (0 means no scoping)
+	db         *gorm.DB
+	embedding  EmbeddingService
+	encryption *utils.EncryptionService
+	logger     zerolog.Logger
+	config     map[string]interface{}
+	userID     uint // User ID for scoping memories (0 means no scoping)
 }
 
 // NewMemoryService creates a new instance of MemoryService for local MCP mode
@@ -30,12 +31,20 @@ func NewMemoryService(db *gorm.DB, embedding EmbeddingService, logger zerolog.Lo
 	if config == nil {
 		config = make(map[string]interface{})
 	}
+	
+	// Extract encryption service from config if available
+	var encryption *utils.EncryptionService
+	if encSvc, ok := config["encryption_service"].(*utils.EncryptionService); ok {
+		encryption = encSvc
+	}
+	
 	return &MemoryService{
-		db:        db,
-		embedding: embedding,
-		logger:    logger,
-		config:    config,
-		userID:    1, // System user for local MCP mode
+		db:         db,
+		embedding:  embedding,
+		encryption: encryption,
+		logger:     logger,
+		config:     config,
+		userID:     1, // System user for local MCP mode
 	}
 }
 
@@ -51,12 +60,20 @@ func NewMemoryServiceWithUser(db *gorm.DB, embedding EmbeddingService, logger ze
 	if userID == 1 {
 		panic("system user (ID: 1) cannot be used in HTTP mode")
 	}
+	
+	// Extract encryption service from config if available
+	var encryption *utils.EncryptionService
+	if encSvc, ok := config["encryption_service"].(*utils.EncryptionService); ok {
+		encryption = encSvc
+	}
+	
 	return &MemoryService{
-		db:        db,
-		embedding: embedding,
-		logger:    logger,
-		config:    config,
-		userID:    userID,
+		db:         db,
+		embedding:  embedding,
+		encryption: encryption,
+		logger:     logger,
+		config:     config,
+		userID:     userID,
 	}
 }
 
@@ -67,6 +84,7 @@ type StoreRequest struct {
 	Type     string
 	Priority string
 	UpdateKey string
+	Tags     []string
 	Metadata map[string]interface{}
 }
 
@@ -77,6 +95,16 @@ type SearchRequest struct {
 	Type              string
 	Limit             int
 	UseSemanticSearch bool
+}
+
+// UpdateRequest represents a request to update a memory
+type UpdateRequest struct {
+	Content  string
+	Category string
+	Type     string
+	Priority string
+	Tags     []string
+	Metadata map[string]interface{}
 }
 
 // ProcessContentForMemory automatically detects and stores memories from content
@@ -152,11 +180,15 @@ func (s *MemoryService) Store(ctx context.Context, req StoreRequest) (*models.Me
 			Str("update_key", req.UpdateKey).
 			Msg("updating existing memory")
 			
+		// Store original content for embedding generation
+		originalContent := req.Content
+		
 		existing.Content = req.Content
 		existing.Category = req.Category
 		existing.Type = req.Type
 		existing.Priority = req.Priority
 		existing.UpdateKey = req.UpdateKey
+		existing.Tags = req.Tags
 		
 		if req.Metadata != nil {
 			metadataJSON, err := json.Marshal(req.Metadata)
@@ -164,6 +196,12 @@ func (s *MemoryService) Store(ctx context.Context, req StoreRequest) (*models.Me
 				return nil, utils.WrapValidationError("metadata", "invalid metadata format")
 			}
 			existing.Metadata = json.RawMessage(metadataJSON)
+		}
+		
+		// Encrypt content if encryption is enabled
+		if err := s.encryptContent(existing); err != nil {
+			s.logger.Error().Err(err).Msg("failed to encrypt content")
+			return nil, utils.WrapDatabaseError("encrypt content", err)
 		}
 		
 		// Skip embedding generation for updates too - do it asynchronously
@@ -182,13 +220,23 @@ func (s *MemoryService) Store(ctx context.Context, req StoreRequest) (*models.Me
 		}
 		
 		// Generate embedding asynchronously after updating the memory
+		// Use original content for embedding, not encrypted content
 		if s.embedding != nil {
-			go s.generateEmbeddingAsync(existing.ID, req.Content)
+			go s.generateEmbeddingAsync(existing.ID, originalContent)
+		}
+		
+		// Decrypt content before returning if it was encrypted
+		if err := s.decryptContent(existing); err != nil {
+			s.logger.Warn().Err(err).Msg("failed to decrypt content for response")
+			// Don't fail the operation, just return with encrypted marker
 		}
 		
 		return existing, nil
 	}
 
+	// Store original content for embedding generation
+	originalContent := req.Content
+	
 	// Create new memory
 	memory := &models.Memory{
 		UserID:    s.userID,
@@ -197,6 +245,7 @@ func (s *MemoryService) Store(ctx context.Context, req StoreRequest) (*models.Me
 		Type:      req.Type,
 		Priority:  req.Priority,
 		UpdateKey: req.UpdateKey,
+		Tags:      req.Tags,
 	}
 	
 	s.logger.Debug().Msg("Creating new memory - will generate embedding asynchronously")
@@ -207,6 +256,12 @@ func (s *MemoryService) Store(ctx context.Context, req StoreRequest) (*models.Me
 			return nil, utils.WrapValidationError("metadata", "invalid metadata format")
 		}
 		memory.Metadata = json.RawMessage(metadataJSON)
+	}
+	
+	// Encrypt content if encryption is enabled
+	if err := s.encryptContent(memory); err != nil {
+		s.logger.Error().Err(err).Msg("failed to encrypt content")
+		return nil, utils.WrapDatabaseError("encrypt content", err)
 	}
 
 	// Skip embedding generation for now - we'll do it asynchronously after storing
@@ -240,11 +295,93 @@ func (s *MemoryService) Store(ctx context.Context, req StoreRequest) (*models.Me
 		Msg("successfully stored new memory")
 
 	// Generate embedding asynchronously after storing the memory
+	// Use original content for embedding, not encrypted content
 	if s.embedding != nil {
-		go s.generateEmbeddingAsync(memory.ID, req.Content)
+		go s.generateEmbeddingAsync(memory.ID, originalContent)
+	}
+	
+	// Decrypt content before returning if it was encrypted
+	if err := s.decryptContent(memory); err != nil {
+		s.logger.Warn().Err(err).Msg("failed to decrypt content for response")
+		// Don't fail the operation, just return with encrypted marker
 	}
 
 	return memory, nil
+}
+
+// Update updates an existing memory by ID
+func (s *MemoryService) Update(ctx context.Context, id uint, req UpdateRequest) (*models.Memory, error) {
+	// Create a new context with a longer timeout to avoid cancellation
+	dbCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// Find the memory by ID
+	var memory models.Memory
+	if err := s.db.WithContext(dbCtx).Where("id = ? AND user_id = ?", id, s.userID).First(&memory).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, utils.WrapNotFoundError("memory", fmt.Sprintf("%d", id))
+		}
+		return nil, utils.WrapDatabaseError("find memory", err)
+	}
+
+	// Store original content for embedding generation
+	originalContent := memory.Content
+
+	// Update fields if provided (only update non-empty values)
+	if req.Content != "" {
+		memory.Content = req.Content
+		originalContent = req.Content // Use new content for embedding
+	}
+	if req.Category != "" {
+		memory.Category = req.Category
+	}
+	if req.Type != "" {
+		memory.Type = req.Type
+	}
+	if req.Priority != "" {
+		memory.Priority = req.Priority
+	}
+	if req.Tags != nil {
+		memory.Tags = req.Tags
+	}
+
+	if req.Metadata != nil {
+		metadataJSON, err := json.Marshal(req.Metadata)
+		if err != nil {
+			return nil, utils.WrapValidationError("metadata", "invalid metadata format")
+		}
+		memory.Metadata = json.RawMessage(metadataJSON)
+	}
+
+	// Encrypt content if encryption is enabled
+	if err := s.encryptContent(&memory); err != nil {
+		s.logger.Error().Err(err).Msg("failed to encrypt content")
+		return nil, utils.WrapDatabaseError("encrypt content", err)
+	}
+
+	// Update memory without touching embedding field initially
+	updateErr := s.db.WithContext(dbCtx).Omit("embedding").Save(&memory).Error
+	if updateErr != nil {
+		s.logger.Error().Err(updateErr).Msg("failed to update memory")
+		return nil, utils.WrapDatabaseError("update memory", updateErr)
+	}
+
+	// Generate new embedding asynchronously if content changed
+	if req.Content != "" && s.embedding != nil {
+		go s.generateEmbeddingAsync(memory.ID, originalContent)
+	}
+
+	s.logger.Info().
+		Uint("id", memory.ID).
+		Msg("successfully updated memory")
+
+	// Decrypt content before returning if it was encrypted
+	if err := s.decryptContent(&memory); err != nil {
+		s.logger.Warn().Err(err).Msg("failed to decrypt content for response")
+		// Don't fail the operation, just return with encrypted marker
+	}
+
+	return &memory, nil
 }
 
 // generateEmbeddingAsync generates embedding for a memory asynchronously
@@ -318,6 +455,14 @@ func (s *MemoryService) Search(ctx context.Context, req SearchRequest) ([]*model
 		s.logger.Error().Err(err).Msg("failed to search memories")
 		return nil, utils.WrapDatabaseError("search memories", err)
 	}
+	
+	// Decrypt content for each memory
+	for _, memory := range memories {
+		if err := s.decryptContent(memory); err != nil {
+			s.logger.Warn().Err(err).Uint("id", memory.ID).Msg("failed to decrypt memory content")
+			// Continue with other memories, don't fail the entire search
+		}
+	}
 
 	return memories, nil
 }
@@ -378,6 +523,14 @@ func (s *MemoryService) SearchSemantic(ctx context.Context, req SearchRequest) (
 		s.logger.Error().Err(err).Msg("failed to perform semantic search")
 		return nil, utils.WrapDatabaseError("semantic search", err)
 	}
+	
+	// Decrypt content for each memory
+	for _, memory := range memories {
+		if err := s.decryptContent(memory); err != nil {
+			s.logger.Warn().Err(err).Uint("id", memory.ID).Msg("failed to decrypt memory content")
+			// Continue with other memories, don't fail the entire search
+		}
+	}
 
 	return memories, nil
 }
@@ -437,6 +590,12 @@ func (s *MemoryService) GetByID(ctx context.Context, id uint) (*models.Memory, e
 		}
 		s.logger.Error().Err(err).Msg("failed to get memory by id")
 		return nil, utils.WrapDatabaseError("get memory by id", err)
+	}
+	
+	// Decrypt content if encrypted
+	if err := s.decryptContent(&memory); err != nil {
+		s.logger.Warn().Err(err).Uint("id", memory.ID).Msg("failed to decrypt memory content")
+		// Don't fail the operation, return with encrypted marker
 	}
 
 	return &memory, nil
@@ -644,4 +803,62 @@ func (s *MemoryService) GetMemoryStats(ctx context.Context) (map[string]interfac
 // GetEmbeddingService returns the embedding service
 func (s *MemoryService) GetEmbeddingService() EmbeddingService {
 	return s.embedding
+}
+
+// GetEncryptionService returns the encryption service
+func (s *MemoryService) GetEncryptionService() *utils.EncryptionService {
+	return s.encryption
+}
+
+// encryptContent encrypts the content field if encryption is enabled
+func (s *MemoryService) encryptContent(memory *models.Memory) error {
+	if s.encryption == nil || memory.Content == "" {
+		return nil
+	}
+	
+	// Encrypt the content
+	encryptedData, err := s.encryption.EncryptField(memory.Content)
+	if err != nil {
+		return fmt.Errorf("failed to encrypt content: %w", err)
+	}
+	
+	// Store encrypted data as JSON
+	encryptedJSON, err := json.Marshal(encryptedData)
+	if err != nil {
+		return fmt.Errorf("failed to marshal encrypted data: %w", err)
+	}
+	
+	memory.EncryptedContent = encryptedJSON
+	memory.IsEncrypted = true
+	// Clear the plain text content
+	memory.Content = "[encrypted]"
+	
+	return nil
+}
+
+// decryptContent decrypts the content field if it's encrypted
+func (s *MemoryService) decryptContent(memory *models.Memory) error {
+	if !memory.IsEncrypted || len(memory.EncryptedContent) == 0 {
+		return nil
+	}
+	
+	if s.encryption == nil {
+		return fmt.Errorf("content is encrypted but encryption service is not available")
+	}
+	
+	// Unmarshal encrypted data
+	var encryptedData utils.EncryptedData
+	if err := json.Unmarshal(memory.EncryptedContent, &encryptedData); err != nil {
+		return fmt.Errorf("failed to unmarshal encrypted data: %w", err)
+	}
+	
+	// Decrypt the content
+	decrypted, err := s.encryption.DecryptField(&encryptedData)
+	if err != nil {
+		return fmt.Errorf("failed to decrypt content: %w", err)
+	}
+	
+	memory.Content = decrypted
+	
+	return nil
 }
