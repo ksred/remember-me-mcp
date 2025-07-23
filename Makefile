@@ -1,4 +1,6 @@
-.PHONY: build run test test-verbose test-coverage lint clean docker-up docker-down setup docker-setup help
+.PHONY: build run test test-verbose test-coverage lint clean docker-up docker-down setup docker-setup help \
+	extension-build extension-package deploy-staging deploy-production deploy-check \
+	build-http-server build-server-release run-mcp run-http
 
 # Default target
 all: build
@@ -34,10 +36,14 @@ swagger:
 	swag init -g cmd/http-server/main.go -o docs
 
 # Build the Claude Desktop extension
-extension:
+extension-build:
 	@echo "Building Claude Desktop extension..."
 	@cd extension && ./build.sh
 	@echo "Extension built: extension/remember-me.dxt"
+
+# Package extension for distribution
+extension-package: extension-build
+	@echo "Extension is ready for distribution at: extension/remember-me.dxt"
 
 # Run tests
 test:
@@ -230,6 +236,27 @@ update:
 release:
 	CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -ldflags '-w -s' -o remember-me-mcp cmd/main.go
 
+# Deploy targets
+deploy-staging:
+	@echo "Deploying to staging environment..."
+	@cd ansible && ansible-playbook -i inventory/staging playbook.yml
+
+deploy-production:
+	@echo "Deploying to production environment..."
+	@cd ansible && ansible-playbook -i inventory/production playbook.yml
+
+deploy-check:
+	@echo "Running deployment check..."
+	@cd ansible && ansible-playbook -i inventory/production playbook.yml --check
+
+# Build HTTP server binary
+build-http-server:
+	go build -o remember-me-http cmd/http-server/main.go
+
+# Build server for deployment (optimized)
+build-server-release:
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -installsuffix cgo -ldflags '-w -s' -o remember-me-http-linux cmd/http-server/main.go
+
 # Cross-compilation targets
 build-linux:
 	GOOS=linux GOARCH=amd64 go build -o remember-me-mcp-linux cmd/main.go
@@ -316,6 +343,17 @@ help:
 	@echo "  build-windows Build for Windows"
 	@echo "  build-macos   Build for macOS"
 	@echo "  build-all     Build for all platforms"
+	@echo "  build-http-server Build HTTP server binary"
+	@echo "  build-server-release Build optimized HTTP server for deployment"
+	@echo ""
+	@echo "Extension:"
+	@echo "  extension-build Build Claude Desktop extension"
+	@echo "  extension-package Package extension for distribution"
+	@echo ""
+	@echo "Deployment:"
+	@echo "  deploy-staging Deploy to staging environment"
+	@echo "  deploy-production Deploy to production environment"
+	@echo "  deploy-check Check deployment (dry run)"
 	@echo ""
 	@echo "Utility:"
 	@echo "  clean         Clean build artifacts"

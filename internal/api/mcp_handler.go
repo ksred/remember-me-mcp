@@ -1,9 +1,11 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -46,8 +48,22 @@ const (
 
 // HandleMCP processes MCP protocol requests over HTTP
 func (s *Server) HandleMCP(c *gin.Context) {
+	// Debug: Log raw request body
+	bodyBytes, _ := c.GetRawData()
+	s.logger.Debug().
+		Int("body_length", len(bodyBytes)).
+		Str("body_raw", string(bodyBytes)).
+		Msg("HandleMCP received raw request")
+
+	// Restore body for ShouldBindJSON
+	c.Request.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+
 	var req MCPRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
+		s.logger.Error().
+			Err(err).
+			Str("body", string(bodyBytes)).
+			Msg("failed to bind JSON request")
 		c.JSON(http.StatusOK, MCPResponse{
 			JSONRPC: "2.0",
 			Error: &MCPError{
@@ -207,6 +223,51 @@ func (s *Server) handleMCPListTools() (interface{}, error) {
 			},
 		},
 		{
+			Name:        "store_memories_bulk",
+			Description: "Store multiple memories at once. Use when the user wants to remember multiple things in a single request.",
+			InputSchema: mcpTypes.ToolInputSchema{
+				Type: "object",
+				Properties: map[string]interface{}{
+					"memories": map[string]interface{}{
+						"type":        "array",
+						"description": "Array of memories to store",
+						"items": map[string]interface{}{
+							"type": "object",
+							"properties": map[string]interface{}{
+								"type": map[string]interface{}{
+									"type":        "string",
+									"description": "Type of memory: fact, conversation, context, or preference",
+									"enum":        []string{"fact", "conversation", "context", "preference"},
+								},
+								"category": map[string]interface{}{
+									"type":        "string",
+									"description": "Category of memory: personal, project, or business",
+									"enum":        []string{"personal", "project", "business"},
+								},
+								"content": map[string]interface{}{
+									"type":        "string",
+									"description": "The content of the memory to store",
+								},
+								"tags": map[string]interface{}{
+									"type":        "array",
+									"description": "Optional tags to categorize the memory",
+									"items": map[string]interface{}{
+										"type": "string",
+									},
+								},
+								"metadata": map[string]interface{}{
+									"type":        "object",
+									"description": "Optional metadata for the memory",
+								},
+							},
+							"required": []string{"type", "category", "content"},
+						},
+					},
+				},
+				Required: []string{"memories"},
+			},
+		},
+		{
 			Name:        "search_memories",
 			Description: "Search for previously stored memories. Use when user asks 'what do you remember about...', 'what did I say about...', 'what are my preferences for...', 'what projects am I working on...', or needs to recall any previously shared information.",
 			InputSchema: mcpTypes.ToolInputSchema{
@@ -309,13 +370,37 @@ func (s *Server) handleMCPListTools() (interface{}, error) {
 
 // handleMCPCallTool handles tool invocations
 func (s *Server) handleMCPCallTool(ctx context.Context, params json.RawMessage, memoryService *services.MemoryService) (interface{}, error) {
+	// Debug logging for tool call params
+	s.logger.Debug().
+		Int("params_length", len(params)).
+		Str("params_raw", string(params)).
+		Msg("handleMCPCallTool received params")
+
 	var callParams struct {
 		Name      string          `json:"name"`
 		Arguments json.RawMessage `json:"arguments"`
 	}
 
 	if err := json.Unmarshal(params, &callParams); err != nil {
+		s.logger.Error().
+			Err(err).
+			Str("params_string", string(params)).
+			Msg("failed to unmarshal tool call params")
 		return nil, fmt.Errorf("invalid tool call params: %w", err)
+	}
+
+	// Log the parsed tool call details
+	s.logger.Debug().
+		Str("tool_name", callParams.Name).
+		Int("arguments_length", len(callParams.Arguments)).
+		Str("arguments_raw", string(callParams.Arguments)).
+		Msg("parsed tool call params")
+
+	// Check if arguments are missing or empty
+	if len(callParams.Arguments) == 0 || string(callParams.Arguments) == "null" {
+		errMsg := fmt.Sprintf("tool '%s' called without arguments. Arguments are required for all tool calls.", callParams.Name)
+		s.logger.Error().Str("tool", callParams.Name).Msg(errMsg)
+		return nil, fmt.Errorf(errMsg)
 	}
 
 	// Create a handler with the scoped memory service
@@ -326,7 +411,11 @@ func (s *Server) handleMCPCallTool(ctx context.Context, params json.RawMessage, 
 
 	switch callParams.Name {
 	case "store_memory":
+		s.logger.Debug().Msg("routing to HandleStoreMemory")
 		result, err = handler.HandleStoreMemory(ctx, callParams.Arguments)
+	case "store_memories_bulk":
+		s.logger.Debug().Msg("routing to HandleStoreMemoriesBulk")
+		result, err = handler.HandleStoreMemoriesBulk(ctx, callParams.Arguments)
 	case "search_memories":
 		result, err = handler.HandleSearchMemories(ctx, callParams.Arguments)
 	case "update_memory":
