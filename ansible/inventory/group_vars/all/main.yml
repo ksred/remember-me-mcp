@@ -12,3 +12,6 @@ postgres_port: 5432
 
 # System settings
 timezone: UTC
+
+# Encryption settings
+encryption_enabled: false  # Override to true in production/staging

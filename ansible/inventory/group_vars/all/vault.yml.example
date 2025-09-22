@@ -18,3 +18,6 @@ vault_jwt_secret: "CHANGE_ME_RANDOM_SECRET_KEY"
 
 # Caddy email for Let's Encrypt
 vault_caddy_email: "admin@remembermcp.com"
+
+# Encryption Master Key (generate with: go run cmd/keygen/main.go)
+vault_encryption_master_key: "CHANGE_ME_BASE64_ENCODED_32_BYTE_KEY"

@@ -1,0 +1,36 @@
+---
+- name: Verify Caddy is Running
+  hosts: all
+  become: yes
+  tasks:
+    - name: Check Caddy service status
+      systemd:
+        name: caddy
+      register: caddy_status
+
+    - name: Show Caddy status
+      debug:
+        msg: |
+          Caddy is {{ caddy_status.status.ActiveState }}
+          Enabled: {{ caddy_status.status.UnitFileState }}
+
+    - name: Test Caddy endpoints
+      uri:
+        url: "https://{{ domain_name }}/health"
+        validate_certs: "{{ 'no' if deploy_environment == 'staging' else 'yes' }}"
+        status_code: 200
+      register: health_check
+      failed_when: false
+
+    - name: Show health check result
+      debug:
+        msg: "Health check: {{ 'PASSED' if health_check.status == 200 else 'FAILED' }} (Status: {{ health_check.status | default('N/A') }})"
+
+    - name: Check if log files are being written
+      stat:
+        path: /var/log/caddy/{{ domain_name }}.log
+      register: log_file
+
+    - name: Show log file status
+      debug:
+        msg: "Log file exists: {{ log_file.stat.exists }}"

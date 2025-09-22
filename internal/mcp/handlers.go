@@ -31,6 +31,7 @@ type StoreMemoryRequest struct {
 	Type     string                 `json:"type"`
 	Category string                 `json:"category"`
 	Content  string                 `json:"content"`
+	Tags     []string               `json:"tags,omitempty"`
 	Metadata map[string]interface{} `json:"metadata,omitempty"`
 }
 
@@ -41,6 +42,17 @@ type SearchMemoriesRequest struct {
 	Type              string `json:"type,omitempty"`
 	Limit             int    `json:"limit,omitempty"`
 	UseSemanticSearch bool   `json:"useSemanticSearch,omitempty"`
+}
+
+// UpdateMemoryRequest represents the request structure for updating memory
+type UpdateMemoryRequest struct {
+	ID       uint                   `json:"id"`
+	Type     string                 `json:"type,omitempty"`
+	Category string                 `json:"category,omitempty"`
+	Content  string                 `json:"content,omitempty"`
+	Tags     []string               `json:"tags,omitempty"`
+	Priority string                 `json:"priority,omitempty"`
+	Metadata map[string]interface{} `json:"metadata,omitempty"`
 }
 
 // DeleteMemoryRequest represents the request structure for deleting memory
@@ -64,6 +76,13 @@ type SearchMemoriesResponse struct {
 	Error    string           `json:"error,omitempty"`
 }
 
+// UpdateMemoryResponse represents the response after updating a memory
+type UpdateMemoryResponse struct {
+	Success bool           `json:"success"`
+	Memory  *models.Memory `json:"memory,omitempty"`
+	Error   string         `json:"error,omitempty"`
+}
+
 // DeleteMemoryResponse represents the response after deleting a memory
 type DeleteMemoryResponse struct {
 	Success bool   `json:"success"`
@@ -71,14 +90,161 @@ type DeleteMemoryResponse struct {
 	Error   string `json:"error,omitempty"`
 }
 
+// StoreMemoriesBulkRequest represents the request structure for bulk storing memories
+type StoreMemoriesBulkRequest struct {
+	Memories []StoreMemoryRequest `json:"memories"`
+}
+
+// StoreMemoriesBulkResponse represents the response after bulk storing memories
+type StoreMemoriesBulkResponse struct {
+	Success   bool                   `json:"success"`
+	Stored    int                    `json:"stored"`
+	Failed    int                    `json:"failed"`
+	Memories  []*models.Memory       `json:"memories,omitempty"`
+	Errors    []string               `json:"errors,omitempty"`
+}
+
+// HandleStoreMemoriesBulk handles the bulk store memories MCP tool call
+func (h *Handler) HandleStoreMemoriesBulk(ctx context.Context, params json.RawMessage) (interface{}, error) {
+	h.logger.Debug().RawJSON("params", params).Msg("handleStoreMemoriesBulk called")
+
+	// Parse request
+	var req StoreMemoriesBulkRequest
+	if err := json.Unmarshal(params, &req); err != nil {
+		h.logger.Error().Err(err).Msg("failed to parse bulk store memories request")
+		return StoreMemoriesBulkResponse{
+			Success: false,
+			Errors:  []string{fmt.Sprintf("invalid request format: %v", err)},
+		}, nil
+	}
+
+	// Validate request
+	if len(req.Memories) == 0 {
+		h.logger.Warn().Msg("bulk store memories request has no memories")
+		return StoreMemoriesBulkResponse{
+			Success: false,
+			Errors:  []string{"memories array is required and cannot be empty"},
+		}, nil
+	}
+
+	// Process each memory
+	var storedMemories []*models.Memory
+	var errors []string
+	successCount := 0
+	failureCount := 0
+
+	for i, memReq := range req.Memories {
+		// Validate individual memory
+		if memReq.Content == "" {
+			errors = append(errors, fmt.Sprintf("memory[%d]: content is required", i))
+			failureCount++
+			continue
+		}
+
+		if !models.IsValidType(memReq.Type) {
+			errors = append(errors, fmt.Sprintf("memory[%d]: invalid type '%s'", i, memReq.Type))
+			failureCount++
+			continue
+		}
+
+		if !models.IsValidCategory(memReq.Category) {
+			errors = append(errors, fmt.Sprintf("memory[%d]: invalid category '%s'", i, memReq.Category))
+			failureCount++
+			continue
+		}
+
+		// Check if tags are provided in metadata for backward compatibility
+		if len(memReq.Tags) == 0 && memReq.Metadata != nil {
+			if tagsInterface, exists := memReq.Metadata["tags"]; exists {
+				switch tags := tagsInterface.(type) {
+				case []interface{}:
+					for _, tag := range tags {
+						if tagStr, ok := tag.(string); ok {
+							memReq.Tags = append(memReq.Tags, tagStr)
+						}
+					}
+				case []string:
+					memReq.Tags = tags
+				}
+				delete(memReq.Metadata, "tags")
+			}
+		}
+
+		// Try to store the memory
+		storeReq := services.StoreRequest{
+			Content:   memReq.Content,
+			Category:  memReq.Category,
+			Type:      memReq.Type,
+			Priority:  "medium",
+			UpdateKey: "",
+			Tags:      memReq.Tags,
+			Metadata:  memReq.Metadata,
+		}
+
+		memory, err := h.memoryService.Store(ctx, storeReq)
+		if err != nil {
+			errors = append(errors, fmt.Sprintf("memory[%d]: %v", i, err))
+			failureCount++
+			continue
+		}
+
+		// Create response memory without embedding
+		responseMemory := &models.Memory{
+			ID:        memory.ID,
+			Type:      memory.Type,
+			Category:  memory.Category,
+			Content:   memory.Content,
+			Priority:  memory.Priority,
+			UpdateKey: memory.UpdateKey,
+			Tags:      memory.Tags,
+			Metadata:  memory.Metadata,
+			CreatedAt: memory.CreatedAt,
+			UpdatedAt: memory.UpdatedAt,
+		}
+		
+		storedMemories = append(storedMemories, responseMemory)
+		successCount++
+	}
+
+	h.logger.Info().
+		Int("total", len(req.Memories)).
+		Int("stored", successCount).
+		Int("failed", failureCount).
+		Msg("bulk store memories completed")
+
+	return StoreMemoriesBulkResponse{
+		Success:  failureCount == 0,
+		Stored:   successCount,
+		Failed:   failureCount,
+		Memories: storedMemories,
+		Errors:   errors,
+	}, nil
+}
+
 // HandleStoreMemory handles the store memory MCP tool call
 func (h *Handler) HandleStoreMemory(ctx context.Context, params json.RawMessage) (interface{}, error) {
-	h.logger.Debug().RawJSON("params", params).Msg("handleStoreMemory called")
+	// Enhanced logging to debug JSON parsing issues
+	h.logger.Debug().
+		Int("params_length", len(params)).
+		Str("params_raw", string(params)).
+		Msg("handleStoreMemory called with raw params")
+
+	// Check if params are empty
+	if len(params) == 0 {
+		h.logger.Error().Msg("empty params received in HandleStoreMemory")
+		return StoreMemoryResponse{
+			Success: false,
+			Error:   "empty request body",
+		}, nil
+	}
 
 	// Parse request
 	var req StoreMemoryRequest
 	if err := json.Unmarshal(params, &req); err != nil {
-		h.logger.Error().Err(err).Msg("failed to parse store memory request")
+		h.logger.Error().
+			Err(err).
+			Str("params_string", string(params)).
+			Msg("failed to parse store memory request")
 		return StoreMemoryResponse{
 			Success: false,
 			Error:   fmt.Sprintf("invalid request format: %v", err),
@@ -92,6 +258,42 @@ func (h *Handler) HandleStoreMemory(ctx context.Context, params json.RawMessage)
 			Success: false,
 			Error:   "content is required",
 		}, nil
+	}
+	
+	if req.Type == "" {
+		h.logger.Warn().Msg("store memory request missing type")
+		return StoreMemoryResponse{
+			Success: false,
+			Error:   "type is required (must be one of: fact, conversation, context, preference)",
+		}, nil
+	}
+	
+	if req.Category == "" {
+		h.logger.Warn().Msg("store memory request missing category")
+		return StoreMemoryResponse{
+			Success: false,
+			Error:   "category is required (must be one of: personal, project, business)",
+		}, nil
+	}
+
+	// Check if tags are provided in metadata for backward compatibility
+	if len(req.Tags) == 0 && req.Metadata != nil {
+		if tagsInterface, exists := req.Metadata["tags"]; exists {
+			switch tags := tagsInterface.(type) {
+			case []interface{}:
+				// Convert []interface{} to []string
+				for _, tag := range tags {
+					if tagStr, ok := tag.(string); ok {
+						req.Tags = append(req.Tags, tagStr)
+					}
+				}
+			case []string:
+				// Direct assignment if already []string
+				req.Tags = tags
+			}
+			// Remove tags from metadata to avoid duplication
+			delete(req.Metadata, "tags")
+		}
 	}
 
 	if !models.IsValidType(req.Type) {
@@ -127,6 +329,7 @@ func (h *Handler) HandleStoreMemory(ctx context.Context, params json.RawMessage)
 			Type:      req.Type,      // Manual override
 			Priority:  detected.Priority,
 			UpdateKey: detected.UpdateKey,
+			Tags:      req.Tags,
 			Metadata:  req.Metadata,
 		}
 		
@@ -142,6 +345,7 @@ func (h *Handler) HandleStoreMemory(ctx context.Context, params json.RawMessage)
 			Type:      req.Type,
 			Priority:  "medium", // Default priority
 			UpdateKey: "",       // No update key
+			Tags:      req.Tags,
 			Metadata:  req.Metadata,
 		}
 	}
@@ -277,6 +481,117 @@ func (h *Handler) HandleSearchMemories(ctx context.Context, params json.RawMessa
 	return SearchMemoriesResponse{
 		Memories: responseMemories,
 		Count:    len(responseMemories),
+	}, nil
+}
+
+// HandleUpdateMemory handles the update memory MCP tool call
+func (h *Handler) HandleUpdateMemory(ctx context.Context, params json.RawMessage) (interface{}, error) {
+	h.logger.Debug().RawJSON("params", params).Msg("handleUpdateMemory called")
+
+	// Parse request
+	var req UpdateMemoryRequest
+	if err := json.Unmarshal(params, &req); err != nil {
+		h.logger.Error().Err(err).Msg("failed to parse update memory request")
+		return UpdateMemoryResponse{
+			Success: false,
+			Error:   fmt.Sprintf("invalid request format: %v", err),
+		}, nil
+	}
+
+	// Validate request
+	if req.ID == 0 {
+		h.logger.Warn().Msg("update memory request missing ID")
+		return UpdateMemoryResponse{
+			Success: false,
+			Error:   "memory ID is required",
+		}, nil
+	}
+
+	// Check if tags are provided in metadata for backward compatibility
+	if len(req.Tags) == 0 && req.Metadata != nil {
+		if tagsInterface, exists := req.Metadata["tags"]; exists {
+			switch tags := tagsInterface.(type) {
+			case []interface{}:
+				// Convert []interface{} to []string
+				for _, tag := range tags {
+					if tagStr, ok := tag.(string); ok {
+						req.Tags = append(req.Tags, tagStr)
+					}
+				}
+			case []string:
+				// Direct assignment if already []string
+				req.Tags = tags
+			}
+			// Remove tags from metadata to avoid duplication
+			delete(req.Metadata, "tags")
+		}
+	}
+
+	// Validate fields if provided
+	if req.Type != "" && !models.IsValidType(req.Type) {
+		h.logger.Warn().Str("type", req.Type).Msg("invalid memory type")
+		return UpdateMemoryResponse{
+			Success: false,
+			Error:   fmt.Sprintf("invalid memory type '%s': must be one of fact, conversation, context, or preference", req.Type),
+		}, nil
+	}
+
+	if req.Category != "" && !models.IsValidCategory(req.Category) {
+		h.logger.Warn().Str("category", req.Category).Msg("invalid memory category")
+		return UpdateMemoryResponse{
+			Success: false,
+			Error:   fmt.Sprintf("invalid memory category '%s': must be one of personal, project, or business", req.Category),
+		}, nil
+	}
+
+	// Call memory service
+	memory, err := h.memoryService.Update(ctx, req.ID, services.UpdateRequest{
+		Content:  req.Content,
+		Category: req.Category,
+		Type:     req.Type,
+		Priority: req.Priority,
+		Tags:     req.Tags,
+		Metadata: req.Metadata,
+	})
+
+	if err != nil {
+		// Check if it's a not found error
+		if utils.IsNotFoundError(err) {
+			h.logger.Warn().Uint("id", req.ID).Msg("memory not found")
+			return UpdateMemoryResponse{
+				Success: false,
+				Error:   fmt.Sprintf("memory with ID %d not found", req.ID),
+			}, nil
+		}
+
+		h.logger.Error().Err(err).Uint("id", req.ID).Msg("failed to update memory")
+		return UpdateMemoryResponse{
+			Success: false,
+			Error:   fmt.Sprintf("failed to update memory: %v", err),
+		}, nil
+	}
+
+	h.logger.Info().
+		Uint("id", memory.ID).
+		Msg("successfully updated memory")
+
+	// Create a response without the embedding field to keep response size manageable
+	responseMemory := &models.Memory{
+		ID:        memory.ID,
+		Type:      memory.Type,
+		Category:  memory.Category,
+		Content:   memory.Content,
+		Priority:  memory.Priority,
+		UpdateKey: memory.UpdateKey,
+		Tags:      memory.Tags,
+		Metadata:  memory.Metadata,
+		CreatedAt: memory.CreatedAt,
+		UpdatedAt: memory.UpdatedAt,
+	}
+
+	return UpdateMemoryResponse{
+		Success: true,
+		Memory:  responseMemory,
 	}, nil
 }
 

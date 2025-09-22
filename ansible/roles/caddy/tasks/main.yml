@@ -26,13 +26,16 @@
     state: present
     update_cache: yes
 
-- name: Create Caddy configuration directory
+- name: Create Caddy directories
   file:
-    path: /etc/caddy/sites
+    path: "{{ item }}"
     state: directory
     owner: caddy
     group: caddy
     mode: '0755'
+  loop:
+    - /etc/caddy/sites
+    - /var/log/caddy
 
 - name: Configure Caddy
   template:
@@ -52,9 +55,50 @@
     mode: '0644'
   notify: reload caddy
 
-- name: Ensure Caddy is running and enabled
+- name: Reload systemd daemon
+  systemd:
+    daemon_reload: yes
+
+- name: Check if Caddy service is already running
+  shell: systemctl is-active caddy
+  register: caddy_active
+  changed_when: false
+  failed_when: false
+
+- name: Start Caddy if not running
   systemd:
     name: caddy
     state: started
+  when: caddy_active.stdout != "active"
+  register: caddy_start_result
+  failed_when: false
+
+- name: Enable Caddy service
+  systemd:
+    name: caddy
     enabled: yes
-    daemon_reload: yes
+  async: 30
+  poll: 5
+
+- name: Debug Caddy start issues
+  debug:
+    msg: |
+      Caddy start result: {{ caddy_start_result }}
+  when: caddy_start_result.failed | default(false)
+
+- name: Get Caddy service status if start failed
+  shell: |
+    systemctl status caddy --no-pager -l
+    journalctl -u caddy -n 50 --no-pager
+  register: caddy_debug_info
+  when: caddy_start_result.failed | default(false)
+
+- name: Show Caddy debug info
+  debug:
+    msg: "{{ caddy_debug_info.stdout_lines }}"
+  when: caddy_debug_info is defined and caddy_debug_info.stdout_lines is defined
+
+- name: Fail if Caddy couldn't start
+  fail:
+    msg: "Failed to start Caddy service. Check the debug output above."
+  when: caddy_start_result.failed | default(false)

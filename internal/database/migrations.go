@@ -21,6 +21,7 @@ func RunMigrations(db *gorm.DB) error {
 		&models.Memory{},
 		&models.ActivityLog{},
 		&models.PerformanceMetric{},
+		&models.Migration{},
 	); err != nil {
 		return fmt.Errorf("failed to run auto-migrations: %w", err)
 	}

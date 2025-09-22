@@ -6,13 +6,13 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"syscall"
 	"time"
 
 	"github.com/ksred/remember-me-mcp/internal/api"
 	"github.com/ksred/remember-me-mcp/internal/config"
 	"github.com/ksred/remember-me-mcp/internal/database"
+	"github.com/ksred/remember-me-mcp/internal/database/migrations"
 	"github.com/ksred/remember-me-mcp/internal/services"
 	"github.com/ksred/remember-me-mcp/internal/utils"
 	"github.com/rs/zerolog"
@@ -40,16 +40,22 @@ import (
 
 func main() {
 	// Parse command line flags
-	var configPath string
+	var (
+		configPath     string
+		skipMigrations bool
+	)
 	flag.StringVar(&configPath, "config", "", "Path to configuration file")
+	flag.BoolVar(&skipMigrations, "skip-migrations", false, "Skip running database migrations")
 	flag.Parse()
 
 	// Load configuration
+	fmt.Println("Loading configuration...")
 	cfg, err := loadConfiguration(configPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to load configuration: %v\n", err)
 		os.Exit(1)
 	}
+	fmt.Printf("Configuration loaded successfully\n")
 	
 	// Debug: Print database configuration
 	fmt.Printf("Database Config: Host=%s, Port=%d, User=%s, DBName=%s\n", 
@@ -57,10 +63,20 @@ func main() {
 
 	// Set up logging
 	logger := setupLogging(cfg)
-	logger.Info().Msg("Starting Remember Me MCP HTTP API server")
+	logger.Info().
+		Str("version", "1.0.0").
+		Int("port", cfg.HTTP.Port).
+		Msg("Starting Remember Me MCP HTTP API server")
+	
+	// Log encryption configuration
+	logger.Info().
+		Bool("encryption_enabled", cfg.Encryption.Enabled).
+		Bool("has_master_key", cfg.Encryption.MasterKey != "").
+		Str("key_length", fmt.Sprintf("%d chars", len(cfg.Encryption.MasterKey))).
+		Msg("Encryption configuration loaded")
 
 	// Create context for graceful shutdown
-	_, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// Set up signal handling for graceful shutdown
@@ -78,16 +94,43 @@ func main() {
 		}
 	}()
 
+	// Create encryption service early for migrations
+	logger.Info().Msg("Creating encryption service for migrations...")
+	encryptionService := createEncryptionService(cfg, logger)
+	
 	// Run migrations
+	logger.Info().Msg("Running database migrations...")
 	if err := runMigrations(db, logger); err != nil {
 		logger.Fatal().Err(err).Msg("Failed to run migrations")
+	}
+	logger.Info().Msg("Database migrations completed")
+	
+	// Run versioned migrations
+	if !skipMigrations {
+		logger.Info().
+			Bool("has_encryption_service", encryptionService != nil).
+			Msg("Running versioned migrations...")
+		if err := runVersionedMigrations(ctx, db, encryptionService, logger); err != nil {
+			logger.Fatal().Err(err).Msg("Failed to run versioned migrations")
+		}
+		logger.Info().Msg("Versioned migrations completed")
+	} else {
+		logger.Warn().Msg("Skipping versioned migrations as requested")
 	}
 
 	// Create services
 	embeddingService := createEmbeddingService(cfg, logger)
-	memoryService := services.NewMemoryService(db.DB(), embeddingService, logger, map[string]interface{}{
+	
+	// Create memory service with encryption support
+	serviceConfig := map[string]interface{}{
 		"memory_limit": cfg.Memory.MaxMemories,
-	})
+		"similarity_threshold": cfg.Memory.SimilarityThreshold,
+	}
+	if encryptionService != nil {
+		serviceConfig["encryption_service"] = encryptionService
+	}
+	
+	memoryService := services.NewMemoryService(db.DB(), embeddingService, logger, serviceConfig)
 	activityService := services.NewActivityService(db.DB(), logger)
 
 	// Create and start HTTP server
@@ -141,23 +184,16 @@ func loadConfiguration(configPath string) (*config.Config, error) {
 
 // setupLogging configures the logger based on configuration
 func setupLogging(cfg *config.Config) zerolog.Logger {
-	// Create log file path
+	// For systemd services, we want to log to stderr so systemd can capture it
+	// Only use file logging if explicitly requested via LOG_FILE env var
 	logFile := os.Getenv("LOG_FILE")
-	if logFile == "" {
-		// Default log file location
-		homeDir, err := os.UserHomeDir()
-		if err != nil {
-			homeDir = "."
-		}
-		logFile = filepath.Join(homeDir, ".config", "remember-me-mcp", "logs", "http-server.log")
-	}
 	
 	// Create logger configuration
 	logConfig := utils.LoggerConfig{
 		Level:      cfg.Server.LogLevel,
 		Pretty:     cfg.Server.Debug,
 		CallerInfo: cfg.Server.Debug,
-		LogFile:    logFile,
+		LogFile:    logFile, // Will be empty unless LOG_FILE is set
 	}
 	
 	// Set up global logger
@@ -235,4 +271,51 @@ func createEmbeddingService(cfg *config.Config, logger zerolog.Logger) services.
 	}
 	
 	return embeddingService
+}
+
+// createEncryptionService creates the encryption service if enabled
+func createEncryptionService(cfg *config.Config, logger zerolog.Logger) *utils.EncryptionService {
+	logger.Info().
+		Bool("enabled", cfg.Encryption.Enabled).
+		Bool("has_key", cfg.Encryption.MasterKey != "").
+		Int("key_length", len(cfg.Encryption.MasterKey)).
+		Msg("Creating encryption service")
+		
+	if !cfg.Encryption.Enabled {
+		logger.Warn().Msg("Encryption is disabled in configuration")
+		return nil
+	}
+	
+	if cfg.Encryption.MasterKey == "" {
+		logger.Error().Msg("Encryption is enabled but no master key provided")
+		return nil
+	}
+	
+	logger.Info().Msg("Attempting to create encryption service with provided key...")
+	encryptionService, err := utils.NewEncryptionService(cfg.Encryption.MasterKey)
+	if err != nil {
+		logger.Error().Err(err).Msg("Failed to create encryption service")
+		return nil
+	}
+	
+	logger.Info().Msg("Encryption service created successfully")
+	return encryptionService
+}
+
+// runVersionedMigrations runs versioned database migrations
+func runVersionedMigrations(ctx context.Context, db *database.Database, encryptionService *utils.EncryptionService, logger zerolog.Logger) error {
+	runner := database.NewMigrationRunner(db.DB(), logger)
+	
+	// Register all migrations
+	migrations := migrations.GetMigrations(encryptionService)
+	for _, m := range migrations {
+		runner.Register(m)
+	}
+	
+	// Run pending migrations
+	if err := runner.Run(ctx); err != nil {
+		return fmt.Errorf("failed to run versioned migrations: %w", err)
+	}
+	
+	return nil
 }

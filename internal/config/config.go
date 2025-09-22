@@ -8,12 +8,13 @@ import (
 
 // Config represents the main application configuration
 type Config struct {
-	Database Database `json:"database" mapstructure:"database"`
-	OpenAI   OpenAI   `json:"openai" mapstructure:"openai"`
-	Memory   Memory   `json:"memory" mapstructure:"memory"`
-	Server   Server   `json:"server" mapstructure:"server"`
-	JWT      JWT      `json:"jwt" mapstructure:"jwt"`
-	HTTP     HTTP     `json:"http" mapstructure:"http"`
+	Database   Database   `json:"database" mapstructure:"database"`
+	OpenAI     OpenAI     `json:"openai" mapstructure:"openai"`
+	Memory     Memory     `json:"memory" mapstructure:"memory"`
+	Server     Server     `json:"server" mapstructure:"server"`
+	JWT        JWT        `json:"jwt" mapstructure:"jwt"`
+	HTTP       HTTP       `json:"http" mapstructure:"http"`
+	Encryption Encryption `json:"encryption" mapstructure:"encryption"`
 }
 
 // Database represents database configuration
@@ -61,6 +62,12 @@ type HTTP struct {
 	AllowOrigins []string `json:"allow_origins" mapstructure:"allow_origins"`
 }
 
+// Encryption represents encryption configuration
+type Encryption struct {
+	MasterKey string `json:"master_key" mapstructure:"master_key"`
+	Enabled   bool   `json:"enabled" mapstructure:"enabled"`
+}
+
 // NewDefault returns a Config instance with default values
 func NewDefault() *Config {
 	return &Config{
@@ -96,6 +103,10 @@ func NewDefault() *Config {
 		HTTP: HTTP{
 			Port: 8082,
 			AllowOrigins: []string{"http://localhost:3000", "http://localhost:5173", "http://localhost:5174"},
+		},
+		Encryption: Encryption{
+			MasterKey: "",
+			Enabled:   false,
 		},
 	}
 }
@@ -164,6 +175,11 @@ func (c *Config) Validate() error {
 	// HTTP validation
 	if c.HTTP.Port <= 0 || c.HTTP.Port > 65535 {
 		return fmt.Errorf("HTTP port must be between 1 and 65535")
+	}
+
+	// Encryption validation
+	if c.Encryption.Enabled && c.Encryption.MasterKey == "" {
+		return fmt.Errorf("encryption master key is required when encryption is enabled")
 	}
 
 	return nil

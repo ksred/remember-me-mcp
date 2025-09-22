@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"time"
 
@@ -27,10 +28,15 @@ func (s *ActivityService) LogActivity(ctx context.Context, userID uint, activity
 	activity := &models.ActivityLog{
 		UserID:    userID,
 		Type:      activityType,
-		Details:   details,
 		IPAddress: ipAddress,
 		UserAgent: userAgent,
 		CreatedAt: time.Now(),
+	}
+
+	// Set details using the new method
+	if err := activity.SetDetailsFromMap(details); err != nil {
+		s.logger.Error().Err(err).Msg("Failed to marshal activity details")
+		return err
 	}
 
 	if err := s.db.WithContext(ctx).Create(activity).Error; err != nil {
@@ -42,12 +48,15 @@ func (s *ActivityService) LogActivity(ctx context.Context, userID uint, activity
 }
 
 // LogPerformance logs performance metrics
-func (s *ActivityService) LogPerformance(ctx context.Context, endpoint, method string, responseTime, statusCode int) error {
+func (s *ActivityService) LogPerformance(ctx context.Context, endpoint, method string, responseTime, statusCode int, userID *uint, errorMsg *string) error {
 	metric := &models.PerformanceMetric{
 		Endpoint:     endpoint,
 		Method:       method,
-		ResponseTime: responseTime,
+		DurationMs:   responseTime,
+		ResponseTime: responseTime, // Set both for compatibility
 		StatusCode:   statusCode,
+		UserID:       userID,
+		Error:        errorMsg,
 		CreatedAt:    time.Now(),
 	}
 
@@ -64,35 +73,64 @@ func (s *ActivityService) GetSearchStats(ctx context.Context, userID *uint) (map
 	stats := make(map[string]interface{})
 	now := time.Now()
 
-	query := s.db.WithContext(ctx).Model(&models.ActivityLog{}).
+	// Base query
+	baseQuery := s.db.WithContext(ctx).Model(&models.ActivityLog{}).
 		Where("type = ?", models.ActivityMemorySearch)
 
 	if userID != nil {
-		query = query.Where("user_id = ?", *userID)
+		baseQuery = baseQuery.Where("user_id = ?", *userID)
 	}
 
-	// Today
+	// Today - create a new query session
 	var todayCount int64
-	if err := query.Where("created_at >= ?", now.Truncate(24*time.Hour)).Count(&todayCount).Error; err != nil {
+	todayStart := now.Truncate(24 * time.Hour)
+	todayQuery := s.db.WithContext(ctx).Model(&models.ActivityLog{}).
+		Where("type = ?", models.ActivityMemorySearch).
+		Where("created_at >= ?", todayStart)
+	if userID != nil {
+		todayQuery = todayQuery.Where("user_id = ?", *userID)
+	}
+	if err := todayQuery.Count(&todayCount).Error; err != nil {
+		s.logger.Error().Err(err).Msg("Failed to count today's searches")
 		return nil, err
 	}
 	stats["searches_today"] = todayCount
 
-	// This week
+	// This week - create a new query session
 	var weekCount int64
-	weekStart := now.AddDate(0, 0, -int(now.Weekday()))
-	if err := query.Where("created_at >= ?", weekStart.Truncate(24*time.Hour)).Count(&weekCount).Error; err != nil {
+	weekStart := now.AddDate(0, 0, -int(now.Weekday())).Truncate(24 * time.Hour)
+	weekQuery := s.db.WithContext(ctx).Model(&models.ActivityLog{}).
+		Where("type = ?", models.ActivityMemorySearch).
+		Where("created_at >= ?", weekStart)
+	if userID != nil {
+		weekQuery = weekQuery.Where("user_id = ?", *userID)
+	}
+	if err := weekQuery.Count(&weekCount).Error; err != nil {
+		s.logger.Error().Err(err).Msg("Failed to count this week's searches")
 		return nil, err
 	}
 	stats["searches_this_week"] = weekCount
 
-	// This month
+	// This month - create a new query session
 	var monthCount int64
 	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
-	if err := query.Where("created_at >= ?", monthStart).Count(&monthCount).Error; err != nil {
+	monthQuery := s.db.WithContext(ctx).Model(&models.ActivityLog{}).
+		Where("type = ?", models.ActivityMemorySearch).
+		Where("created_at >= ?", monthStart)
+	if userID != nil {
+		monthQuery = monthQuery.Where("user_id = ?", *userID)
+	}
+	if err := monthQuery.Count(&monthCount).Error; err != nil {
+		s.logger.Error().Err(err).Msg("Failed to count this month's searches")
 		return nil, err
 	}
 	stats["searches_this_month"] = monthCount
+
+	// Log the results for debugging
+	s.logger.Debug().
+		Interface("stats", stats).
+		Interface("user_id", userID).
+		Msg("Search statistics retrieved")
 
 	return stats, nil
 }
@@ -106,8 +144,9 @@ func (s *ActivityService) GetMemoryGrowthStats(ctx context.Context, userID *uint
 		date := now.AddDate(0, 0, -i)
 		dateStr := date.Format("2006-01-02")
 		
-		query := s.db.WithContext(ctx).Model(&models.ActivityLog{}).
-			Where("type = ? AND DATE(created_at) = ?", models.ActivityMemoryStored, date.Format("2006-01-02"))
+		// Count memories directly from the memories table instead of activity logs
+		query := s.db.WithContext(ctx).Model(&models.Memory{}).
+			Where("DATE(created_at) = ?", dateStr)
 
 		if userID != nil {
 			query = query.Where("user_id = ?", *userID)
@@ -228,8 +267,8 @@ func (s *ActivityService) getRecentActivity(ctx context.Context, userID uint, li
 		}
 
 		// Add type-specific details
-		if activity.Details != nil {
-			result["details"] = activity.Details
+		if details, err := activity.GetDetailsMap(); err == nil && details != nil {
+			result["details"] = details
 		}
 
 		// Add IP and user agent if available
@@ -248,18 +287,20 @@ func (s *ActivityService) getRecentActivity(ctx context.Context, userID uint, li
 
 // getActivityDescription provides user-friendly descriptions for activities
 func (s *ActivityService) getActivityDescription(activity models.ActivityLog) string {
+	details, _ := activity.GetDetailsMap()
+	
 	switch activity.Type {
 	case models.ActivityMemoryStored:
-		if activity.Details != nil {
-			if category, ok := activity.Details["category"].(string); ok {
+		if details != nil {
+			if category, ok := details["category"].(string); ok {
 				return fmt.Sprintf("Stored memory in %s category", category)
 			}
 		}
 		return "Stored a new memory"
 	
 	case models.ActivityMemorySearch:
-		if activity.Details != nil {
-			if query, ok := activity.Details["query"].(string); ok {
+		if details != nil {
+			if query, ok := details["query"].(string); ok {
 				if len(query) > 50 {
 					query = query[:50] + "..."
 				}
@@ -269,24 +310,24 @@ func (s *ActivityService) getActivityDescription(activity models.ActivityLog) st
 		return "Performed memory search"
 	
 	case models.ActivityMemoryDeleted:
-		if activity.Details != nil {
-			if memoryID, ok := activity.Details["memory_id"]; ok {
+		if details != nil {
+			if memoryID, ok := details["memory_id"]; ok {
 				return fmt.Sprintf("Deleted memory (ID: %v)", memoryID)
 			}
 		}
 		return "Deleted a memory"
 	
 	case models.ActivityAPIKeyCreated:
-		if activity.Details != nil {
-			if name, ok := activity.Details["name"].(string); ok {
+		if details != nil {
+			if name, ok := details["name"].(string); ok {
 				return fmt.Sprintf("Created API key: %s", name)
 			}
 		}
 		return "Created new API key"
 	
 	case models.ActivityAPIKeyDeleted:
-		if activity.Details != nil {
-			if name, ok := activity.Details["name"].(string); ok {
+		if details != nil {
+			if name, ok := details["name"].(string); ok {
 				return fmt.Sprintf("Deleted API key: %s", name)
 			}
 		}
@@ -306,24 +347,32 @@ func (s *ActivityService) GetPerformanceStats(ctx context.Context) (map[string]i
 	now := time.Now()
 
 	// Average response time today
-	var avgResponseTime float64
+	var avgResponseTime sql.NullFloat64
 	if err := s.db.WithContext(ctx).Model(&models.PerformanceMetric{}).
 		Where("created_at >= ?", now.Truncate(24*time.Hour)).
-		Select("AVG(response_time)").Scan(&avgResponseTime).Error; err != nil {
-		avgResponseTime = 0
+		Select("AVG(duration_ms)").Scan(&avgResponseTime).Error; err != nil {
+		s.logger.Debug().Err(err).Msg("Failed to get average response time")
 	}
-	stats["average_response_time_ms"] = int(avgResponseTime)
+	if avgResponseTime.Valid {
+		stats["average_response_time_ms"] = int(avgResponseTime.Float64)
+	} else {
+		stats["average_response_time_ms"] = 0
+	}
 
 	// P95 response time today
-	var p95ResponseTime int
+	var p95ResponseTime sql.NullFloat64
 	if err := s.db.WithContext(ctx).Raw(`
-		SELECT PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY response_time) 
+		SELECT PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY duration_ms) 
 		FROM performance_metrics 
 		WHERE created_at >= ?
 	`, now.Truncate(24*time.Hour)).Scan(&p95ResponseTime).Error; err != nil {
-		p95ResponseTime = 0
+		s.logger.Debug().Err(err).Msg("Failed to get P95 response time")
 	}
-	stats["p95_response_time_ms"] = p95ResponseTime
+	if p95ResponseTime.Valid {
+		stats["p95_response_time_ms"] = int(p95ResponseTime.Float64)
+	} else {
+		stats["p95_response_time_ms"] = 0
+	}
 
 	// Total requests today
 	var totalRequests int64
