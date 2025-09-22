@@ -84,6 +84,7 @@ func main() {
 	// Create memory service with encryption support
 	serviceConfig := map[string]interface{}{
 		"memory_limit": cfg.Memory.MaxMemories,
+		"similarity_threshold": cfg.Memory.SimilarityThreshold,
 	}
 	if encryptionService != nil {
 		serviceConfig["encryption_service"] = encryptionService

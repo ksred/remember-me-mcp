@@ -1,15 +1,12 @@
 {
   "dxt_version": "0.1",
   "name": "remember-me",
-  "display_name": "Remember Me",
   "version": "1.0.0",
   "description": "Persistent memory capabilities for Claude across conversations",
-  "long_description": "A powerful Model Context Protocol (MCP) server that provides persistent memory capabilities for Claude, allowing it to store and retrieve information across conversations. Features semantic search, intelligent categorization, and priority-based memory management.",
   "author": {
     "name": "Kyle Redelinghuys",
     "email": "kyle@ksred.com"
   },
-  "icon": "icon.svg",
   "server": {
     "type": "node",
     "entry_point": "server/mcp-http-client.js",
@@ -62,21 +59,5 @@
       "name": "delete_memory",
       "description": "Delete a memory by ID"
     }
-  ],
-  "prompts": [],
-  "keywords": [
-    "memory",
-    "persistence",
-    "context",
-    "knowledge-base",
-    "notes",
-    "semantic-search",
-    "mcp"
-  ],
-  "readme": "https://github.com/ksred/remember-me-mcp/blob/main/README.md",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/ksred/remember-me-mcp"
-  },
-  "license": "MIT"
+  ]
 }

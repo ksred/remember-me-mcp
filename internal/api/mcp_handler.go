@@ -10,6 +10,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/ksred/remember-me-mcp/internal/mcp"
+	"github.com/ksred/remember-me-mcp/internal/models"
 	"github.com/ksred/remember-me-mcp/internal/services"
 	mcpTypes "github.com/mark3labs/mcp-go/mcp"
 )
@@ -117,7 +118,7 @@ func (s *Server) HandleMCP(c *gin.Context) {
 	case "tools/list":
 		result, err = s.handleMCPListTools()
 	case "tools/call":
-		result, err = s.handleMCPCallTool(c.Request.Context(), req.Params, scopedMemoryService)
+		result, err = s.handleMCPCallTool(c.Request.Context(), req.Params, scopedMemoryService, user, c)
 	case "resources/list":
 		result, err = s.handleMCPListResources()
 	case "resources/read":
@@ -369,7 +370,7 @@ func (s *Server) handleMCPListTools() (interface{}, error) {
 }
 
 // handleMCPCallTool handles tool invocations
-func (s *Server) handleMCPCallTool(ctx context.Context, params json.RawMessage, memoryService *services.MemoryService) (interface{}, error) {
+func (s *Server) handleMCPCallTool(ctx context.Context, params json.RawMessage, memoryService *services.MemoryService, user *models.User, c *gin.Context) (interface{}, error) {
 	// Debug logging for tool call params
 	s.logger.Debug().
 		Int("params_length", len(params)).
@@ -418,6 +419,56 @@ func (s *Server) handleMCPCallTool(ctx context.Context, params json.RawMessage, 
 		result, err = handler.HandleStoreMemoriesBulk(ctx, callParams.Arguments)
 	case "search_memories":
 		result, err = handler.HandleSearchMemories(ctx, callParams.Arguments)
+		// Log search activity if successful (but not for wildcard queries)
+		if err == nil && result != nil && user != nil {
+			go func() {
+				// Parse the request to get search details
+				var searchReq mcp.SearchMemoriesRequest
+				if unmarshalErr := json.Unmarshal(callParams.Arguments, &searchReq); unmarshalErr == nil {
+					// Skip logging wildcard searches
+					if searchReq.Query == "*" || searchReq.Query == "" {
+						return
+					}
+					
+					// Get result count
+					resultCount := 0
+					if searchResp, ok := result.(mcp.SearchMemoriesResponse); ok {
+						resultCount = searchResp.Count
+					}
+					
+					details := map[string]interface{}{
+						"query":               searchReq.Query,
+						"category":            searchReq.Category,
+						"type":                searchReq.Type,
+						"limit":               searchReq.Limit,
+						"use_semantic_search": searchReq.Query != "", // MCP uses semantic search when query is present
+						"results_count":       resultCount,
+						"source":              "mcp", // Mark as MCP search
+					}
+					
+					// Use background context for async logging
+					if logErr := s.activityService.LogActivity(
+						context.Background(),
+						user.ID,
+						models.ActivityMemorySearch,
+						details,
+						c.ClientIP(),
+						c.GetHeader("User-Agent"),
+					); logErr != nil {
+						s.logger.Error().
+							Err(logErr).
+							Uint("user_id", user.ID).
+							Msg("Failed to log MCP search activity")
+					} else {
+						s.logger.Debug().
+							Uint("user_id", user.ID).
+							Str("query", searchReq.Query).
+							Int("results_count", resultCount).
+							Msg("MCP search activity logged")
+					}
+				}
+			}()
+		}
 	case "update_memory":
 		result, err = handler.HandleUpdateMemory(ctx, callParams.Arguments)
 	case "delete_memory":
@@ -505,6 +556,7 @@ func (s *Server) createScopedMemoryService(userID uint) *services.MemoryService 
 	// Build config with memory limit and encryption service
 	serviceConfig := map[string]interface{}{
 		"memory_limit": s.config.Memory.MaxMemories,
+		"similarity_threshold": s.config.Memory.SimilarityThreshold,
 	}
 	
 	// Pass encryption service if available

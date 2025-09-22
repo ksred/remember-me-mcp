@@ -62,6 +62,9 @@ func NewServer(cfg *config.Config, db *database.Database, memoryService *service
 		logger:         logger,
 	}
 
+	// Add performance tracking middleware
+	router.Use(server.PerformanceMiddleware())
+
 	server.setupRoutes()
 
 	return server, nil
@@ -170,6 +173,55 @@ func LoggerMiddleware(logger zerolog.Logger) gin.HandlerFunc {
 			Dur("latency", latency).
 			Str("error", errorMessage).
 			Msg("HTTP request")
+	}
+}
+
+// PerformanceMiddleware tracks request performance metrics
+func (s *Server) PerformanceMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Skip performance tracking for certain endpoints
+		path := c.Request.URL.Path
+		if path == "/health" || path == "/api/v1/health" || path == "/swagger" {
+			c.Next()
+			return
+		}
+
+		start := time.Now()
+		
+		// Process request
+		c.Next()
+		
+		// Calculate response time
+		latency := time.Since(start)
+		latencyMs := int(latency.Milliseconds())
+		
+		// Get user ID if authenticated
+		var userID *uint
+		if user, exists := getUserFromContext(c); exists && user != nil {
+			userID = &user.ID
+		}
+		
+		// Get error message if any
+		var errorMsg *string
+		if len(c.Errors) > 0 {
+			errStr := c.Errors.String()
+			errorMsg = &errStr
+		}
+		
+		// Log performance asynchronously to avoid blocking the response
+		go func() {
+			if err := s.activityService.LogPerformance(
+				context.Background(),
+				path,
+				c.Request.Method,
+				latencyMs,
+				c.Writer.Status(),
+				userID,
+				errorMsg,
+			); err != nil {
+				s.logger.Error().Err(err).Msg("Failed to log performance metric")
+			}
+		}()
 	}
 }
 

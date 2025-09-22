@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strconv"
@@ -139,16 +140,37 @@ func (s *Server) searchMemoriesHandler(c *gin.Context) {
 		return
 	}
 
-	// Log the search activity
-	details := map[string]interface{}{
-		"query":                query,
-		"category":             category,
-		"type":                 memoryType,
-		"limit":                limit,
-		"use_semantic_search":  useSemanticSearch,
-		"results_count":        len(memories),
+	// Log the search activity only if it's not a wildcard query
+	if query != "*" && query != "" {
+		details := map[string]interface{}{
+			"query":                query,
+			"category":             category,
+			"type":                 memoryType,
+			"limit":                limit,
+			"use_semantic_search":  useSemanticSearch,
+			"results_count":        len(memories),
+		}
+		
+		// Log search activity asynchronously with proper error handling
+		go func() {
+			// Create a new context since the request context might be cancelled
+			ctx := context.Background()
+			if err := s.activityService.LogActivity(ctx, user.ID, models.ActivityMemorySearch, details, c.ClientIP(), c.GetHeader("User-Agent")); err != nil {
+				s.logger.Error().
+					Err(err).
+					Uint("user_id", user.ID).
+					Str("activity_type", models.ActivityMemorySearch).
+					Interface("details", details).
+					Msg("Failed to log search activity")
+			} else {
+				s.logger.Debug().
+					Uint("user_id", user.ID).
+					Str("query", query).
+					Int("results_count", len(memories)).
+					Msg("Search activity logged successfully")
+			}
+		}()
 	}
-	go s.activityService.LogActivity(c.Request.Context(), user.ID, models.ActivityMemorySearch, details, c.ClientIP(), c.GetHeader("User-Agent"))
 
 	response := mcp.SearchMemoriesResponse{
 		Memories: memories,

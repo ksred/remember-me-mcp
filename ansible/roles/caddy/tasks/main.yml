@@ -96,7 +96,7 @@
 - name: Show Caddy debug info
   debug:
     msg: "{{ caddy_debug_info.stdout_lines }}"
-  when: caddy_debug_info is defined
+  when: caddy_debug_info is defined and caddy_debug_info.stdout_lines is defined
 
 - name: Fail if Caddy couldn't start
   fail:

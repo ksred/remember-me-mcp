@@ -415,6 +415,12 @@ func (s *MemoryService) generateEmbeddingAsync(memoryID uint, content string) {
 
 // Search searches memories based on the provided criteria
 func (s *MemoryService) Search(ctx context.Context, req SearchRequest) ([]*models.Memory, error) {
+	// Handle wildcard query - return all memories
+	if req.Query == "*" || req.Query == "" {
+		req.Query = ""
+		req.UseSemanticSearch = false
+	}
+	
 	// Use semantic search if requested and embedding service is available
 	if req.UseSemanticSearch && s.embedding != nil && req.Query != "" {
 		return s.SearchSemantic(ctx, req)
@@ -423,8 +429,8 @@ func (s *MemoryService) Search(ctx context.Context, req SearchRequest) ([]*model
 	// Fall back to keyword search
 	query := s.db.WithContext(ctx).Model(&models.Memory{}).Where("user_id = ?", s.userID)
 
-	// Apply keyword search if query is provided
-	if req.Query != "" {
+	// Apply keyword search if query is provided (and not wildcard)
+	if req.Query != "" && req.Query != "*" {
 		searchTerm := fmt.Sprintf("%%%s%%", strings.ToLower(req.Query))
 		query = query.Where("LOWER(content) LIKE ?", searchTerm)
 	}
@@ -502,7 +508,6 @@ func (s *MemoryService) SearchSemantic(ctx context.Context, req SearchRequest) (
 	}
 
 	// Perform vector similarity search
-	// Using cosine similarity (1 - cosine_distance)
 	var memories []*models.Memory
 	
 	// For SQLite in tests, fall back to regular search
@@ -511,18 +516,82 @@ func (s *MemoryService) SearchSemantic(ctx context.Context, req SearchRequest) (
 		return s.Search(ctx, req)
 	}
 
-	// PostgreSQL with pgvector
-	err = query.
-		Select("*, (1 - (embedding <=> ?)) as similarity", pgvector.NewVector(queryEmbedding)).
-		Where("embedding IS NOT NULL").
-		Order("created_at DESC").
-		Limit(limit).
-		Find(&memories).Error
+	// Get similarity threshold from config - use a lower default for now
+	similarityThreshold := 0.3 // lowered significantly from 0.7
+	if threshold, ok := s.config["similarity_threshold"].(float64); ok && threshold > 0 {
+		similarityThreshold = threshold
+	}
+	
+	s.logger.Info().
+		Float64("similarity_threshold", similarityThreshold).
+		Str("query", req.Query).
+		Int("limit", limit).
+		Msg("Performing semantic search")
+
+	// First, check if we have any memories with embeddings
+	var totalCount int64
+	s.db.WithContext(ctx).Model(&models.Memory{}).
+		Where("user_id = ? AND embedding IS NOT NULL", s.userID).
+		Count(&totalCount)
+	
+	s.logger.Info().
+		Int64("memories_with_embeddings", totalCount).
+		Msg("Total memories available for semantic search")
+
+	if totalCount == 0 {
+		s.logger.Warn().Msg("No memories with embeddings found")
+		return []*models.Memory{}, nil
+	}
+
+	// Simple semantic search query using pgvector
+	// Calculate similarity and order by it
+	// Using raw SQL for the order clause to ensure proper syntax
+	sql := fmt.Sprintf(`
+		SELECT *, (1 - (embedding <=> $1)) as similarity 
+		FROM memories 
+		WHERE user_id = $2 AND embedding IS NOT NULL
+		%s %s
+		ORDER BY embedding <=> $1
+		LIMIT $3
+	`, 
+		func() string {
+			if req.Category != "" {
+				return "AND category = $4"
+			}
+			return ""
+		}(),
+		func() string {
+			if req.Type != "" {
+				if req.Category != "" {
+					return "AND type = $5"
+				}
+				return "AND type = $4"
+			}
+			return ""
+		}(),
+	)
+	
+	args := []interface{}{pgvector.NewVector(queryEmbedding), s.userID, limit}
+	if req.Category != "" {
+		args = append(args, req.Category)
+	}
+	if req.Type != "" {
+		args = append(args, req.Type)
+	}
+	
+	err = s.db.WithContext(ctx).Raw(sql, args...).Scan(&memories).Error
 
 	if err != nil {
-		s.logger.Error().Err(err).Msg("failed to perform semantic search")
+		s.logger.Error().
+			Err(err).
+			Str("query", req.Query).
+			Msg("failed to perform semantic search")
 		return nil, utils.WrapDatabaseError("semantic search", err)
 	}
+	
+	s.logger.Info().
+		Int("results_count", len(memories)).
+		Msg("Semantic search completed")
 	
 	// Decrypt content for each memory
 	for _, memory := range memories {
@@ -533,6 +602,14 @@ func (s *MemoryService) SearchSemantic(ctx context.Context, req SearchRequest) (
 	}
 
 	return memories, nil
+}
+
+// truncateString truncates a string to the specified length
+func truncateString(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "..."
 }
 
 // Delete deletes a memory by ID
